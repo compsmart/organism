@@ -382,6 +382,10 @@ input[type="number"] {
   background: linear-gradient(90deg, #d58f63, #9b3629);
 }
 
+.bar.surprise span {
+  background: linear-gradient(90deg, #7b68ee, #5a3fd6);
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

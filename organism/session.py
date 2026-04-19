@@ -41,6 +41,7 @@ class SimulationSession:
         self.hidden = None
         self.observation: np.ndarray | None = None
         self.last_step = StepSnapshot()
+        self.last_surprise: float = 0.0
         self.position_history: list[np.ndarray] = []
 
         if checkpoint is not None:
@@ -101,6 +102,7 @@ class SimulationSession:
             raise RuntimeError("No checkpoint loaded; policy stepping is unavailable.")
         if self.observation is None:
             self.reset(seed=self.seed)
+        prev_hidden = self.hidden
         policy_step = self.learner.select_action(
             self.observation,
             self.hidden,
@@ -108,6 +110,9 @@ class SimulationSession:
             track_grad=False,
         )
         self.hidden = policy_step.hidden.detach()
+        self.last_surprise = self.learner.compute_surprise(
+            prev_hidden, policy_step.action, self.hidden
+        )
         return self._apply_action(policy_step.action, policy_step.reflex_override)
 
     def step_manual(self, action: Action) -> StepSnapshot:
@@ -147,6 +152,7 @@ class SimulationSession:
                 "action_name": self.last_step.action_name,
                 "reward": float(self.last_step.reward),
                 "reflex_override": self.last_step.reflex_override,
+                "surprise": self.last_surprise,
             },
             "world": {
                 "size": float(env.config.world_size),

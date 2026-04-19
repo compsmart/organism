@@ -11,12 +11,12 @@ class EnvironmentConfig:
     max_steps: int = 256
     num_food_sources: int = 3
     num_hazards: int = 3
-    sensor_range: float = 0.38
+    sensor_range: float = 0.55
     eat_radius: float = 0.08
     shelter_radius: float = 0.12
     move_speed: float = 0.06
     turn_angle: float = 0.4
-    energy_decay: float = 0.012
+    energy_decay: float = 0.005
     movement_energy_cost: float = 0.01
     turn_energy_cost: float = 0.005
     food_energy_gain: float = 0.38
@@ -40,6 +40,9 @@ class AgentConfig:
     value_coef: float = 0.5
     entropy_coef: float = 0.02
     grad_clip: float = 1.0
+    wm_learning_rate: float = 1e-3
+    surprise_coef: float = 0.02
+    max_surprise_bonus: float = 0.1
 
 
 @dataclass

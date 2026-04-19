@@ -21,6 +21,7 @@ const elements = {
   damageValue: document.getElementById("damageValue"),
   fatigueValue: document.getElementById("fatigueValue"),
   stressValue: document.getElementById("stressValue"),
+  surpriseValue: document.getElementById("surpriseValue"),
   returnValue: document.getElementById("returnValue"),
   rewardValue: document.getElementById("rewardValue"),
   actionValue: document.getElementById("actionValue"),
@@ -29,6 +30,7 @@ const elements = {
   damageBar: document.getElementById("damageBar"),
   fatigueBar: document.getElementById("fatigueBar"),
   stressBar: document.getElementById("stressBar"),
+  surpriseBar: document.getElementById("surpriseBar"),
   foodSensor: document.getElementById("foodSensor"),
   hazardSensor: document.getElementById("hazardSensor"),
   wallSensor: document.getElementById("wallSensor"),
@@ -109,6 +111,8 @@ function updatePanels(state) {
   elements.damageValue.textContent = episode.damage.toFixed(2);
   elements.fatigueValue.textContent = episode.fatigue.toFixed(2);
   elements.stressValue.textContent = episode.stress.toFixed(2);
+  const surprise = episode.surprise || 0;
+  elements.surpriseValue.textContent = surprise.toFixed(3);
   elements.returnValue.textContent = episode.return.toFixed(3);
   elements.rewardValue.textContent = episode.reward.toFixed(3);
   elements.actionValue.textContent = episode.action_name;
@@ -118,6 +122,7 @@ function updatePanels(state) {
   setBar(elements.damageBar, episode.damage);
   setBar(elements.fatigueBar, episode.fatigue);
   setBar(elements.stressBar, Math.min(1, episode.stress));
+  setBar(elements.surpriseBar, Math.min(1, surprise * 10));
 
   elements.foodSensor.textContent = formatTriplet(sensors.food);
   elements.hazardSensor.textContent = formatTriplet(sensors.hazard);

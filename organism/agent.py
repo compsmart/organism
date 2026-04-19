@@ -14,6 +14,27 @@ from .config import AgentConfig, TrainingConfig
 from .env import Action, ObsIndex
 
 
+class WorldModel(nn.Module):
+    """Predicts next GRU hidden state from current hidden state and action."""
+
+    def __init__(self, hidden_size: int, action_size: int, action_embed_size: int = 16) -> None:
+        super().__init__()
+        self.action_embed = nn.Embedding(action_size, action_embed_size)
+        self.predictor = nn.Sequential(
+            nn.Linear(hidden_size + action_embed_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
+        )
+
+    def forward(self, hidden: Tensor, action: Tensor) -> Tensor:
+        action_emb = self.action_embed(action)
+        combined = torch.cat([hidden, action_emb], dim=-1)
+        return self.predictor(combined)
+
+    def prediction_error(self, predicted: Tensor, actual: Tensor) -> Tensor:
+        return (predicted - actual.detach()).pow(2).mean(dim=-1)
+
+
 class RecurrentActorCritic(nn.Module):
     def __init__(self, observation_size: int, action_size: int, hidden_size: int) -> None:
         super().__init__()
@@ -157,6 +178,11 @@ class OrganismLearner:
         self.model = RecurrentActorCritic(observation_size, action_size, agent_config.hidden_size)
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=agent_config.learning_rate)
+        self.world_model = WorldModel(agent_config.hidden_size, action_size)
+        self.world_model.to(self.device)
+        self.wm_optimizer = torch.optim.Adam(
+            self.world_model.parameters(), lr=agent_config.wm_learning_rate
+        )
         self.reflex = ReflexController()
         self.replay = ReplayBuffer(training_config.replay_capacity, seed=seed)
         torch.manual_seed(seed)
@@ -225,12 +251,22 @@ class OrganismLearner:
             _, _, next_value = self.model.forward_step(observation_tensor, hidden)
         return next_value
 
+    def compute_surprise(
+        self, prev_hidden: Tensor, action: int, actual_hidden: Tensor
+    ) -> float:
+        with torch.no_grad():
+            action_t = torch.tensor([action], dtype=torch.int64, device=self.device)
+            predicted = self.world_model(prev_hidden.detach(), action_t)
+            error = (predicted - actual_hidden.detach()).pow(2).mean()
+        return float(error.item())
+
     def online_update(
         self,
         step: PolicyStep,
         reward: float,
         done: bool,
         next_value: Tensor,
+        prev_hidden: Tensor | None = None,
     ) -> dict[str, float]:
         reward_tensor = torch.tensor([reward], dtype=torch.float32, device=self.device)
         done_mask = torch.tensor([0.0 if done else 1.0], dtype=torch.float32, device=self.device)
@@ -250,12 +286,25 @@ class OrganismLearner:
         loss.backward()
         nn.utils.clip_grad_norm_(self.model.parameters(), self.agent_config.grad_clip)
         self.optimizer.step()
-        return {
+
+        stats = {
             "loss": float(loss.item()),
             "policy_loss": float(policy_loss.item()),
             "value_loss": float(value_loss.item()),
             "entropy": float(entropy_bonus.item()),
         }
+
+        if prev_hidden is not None:
+            action_t = torch.tensor([step.action], dtype=torch.int64, device=self.device)
+            predicted = self.world_model(prev_hidden.detach(), action_t)
+            wm_loss = (predicted - step.hidden.detach()).pow(2).mean()
+            self.wm_optimizer.zero_grad(set_to_none=True)
+            wm_loss.backward()
+            nn.utils.clip_grad_norm_(self.world_model.parameters(), self.agent_config.grad_clip)
+            self.wm_optimizer.step()
+            stats["wm_loss"] = float(wm_loss.item())
+
+        return stats
 
     def sleep_update(self) -> dict[str, float]:
         if len(self.replay) < self.training_config.min_replay_episodes:
@@ -266,6 +315,7 @@ class OrganismLearner:
         total_policy_loss = 0.0
         total_value_loss = 0.0
         total_entropy = 0.0
+        total_wm_loss = 0.0
 
         for _ in range(self.training_config.sleep_batches):
             batch = self.replay.sample_batch(
@@ -280,6 +330,7 @@ class OrganismLearner:
             segment_policy_losses = []
             segment_value_losses = []
             segment_entropies = []
+            segment_wm_losses = []
             for segment in batch:
                 observations = torch.as_tensor(
                     segment["observations"], dtype=torch.float32, device=self.device
@@ -298,8 +349,10 @@ class OrganismLearner:
                 train_observations = observations[burn_in:]
                 values = []
                 logits = []
+                hiddens = []
                 current_hidden = hidden
                 for index, obs in enumerate(train_observations):
+                    hiddens.append(current_hidden)
                     current_hidden, step_logits, step_value = self.model.forward_step(
                         obs.unsqueeze(0), current_hidden
                     )
@@ -331,6 +384,15 @@ class OrganismLearner:
                 segment_value_losses.append(value_loss.detach())
                 segment_entropies.append(entropy.detach())
 
+                wm_loss_items = []
+                for t in range(len(actions)):
+                    h_curr = hiddens[t].detach()
+                    h_next = hiddens[t + 1].detach()
+                    pred = self.world_model(h_curr, actions[t : t + 1])
+                    wm_loss_items.append((pred - h_next).pow(2).mean())
+                if wm_loss_items:
+                    segment_wm_losses.append(torch.stack(wm_loss_items).mean())
+
             if not segment_losses:
                 continue
 
@@ -339,6 +401,16 @@ class OrganismLearner:
             batch_loss.backward()
             nn.utils.clip_grad_norm_(self.model.parameters(), self.agent_config.grad_clip)
             self.optimizer.step()
+
+            if segment_wm_losses:
+                batch_wm_loss = torch.stack(segment_wm_losses).mean()
+                self.wm_optimizer.zero_grad(set_to_none=True)
+                batch_wm_loss.backward()
+                nn.utils.clip_grad_norm_(
+                    self.world_model.parameters(), self.agent_config.grad_clip
+                )
+                self.wm_optimizer.step()
+                total_wm_loss += float(batch_wm_loss.item())
 
             batches_run += 1
             total_loss += float(batch_loss.item())
@@ -354,12 +426,21 @@ class OrganismLearner:
             "policy_loss": total_policy_loss / batches_run,
             "value_loss": total_value_loss / batches_run,
             "entropy": total_entropy / batches_run,
+            "wm_loss": total_wm_loss / batches_run,
             "batches": float(batches_run),
         }
 
     def save(self, path: str) -> None:
-        torch.save(self.model.state_dict(), path)
+        torch.save(
+            {"model": self.model.state_dict(), "world_model": self.world_model.state_dict()},
+            path,
+        )
 
     def load(self, path: str) -> None:
-        state_dict = torch.load(path, map_location=self.device)
-        self.model.load_state_dict(state_dict)
+        state = torch.load(path, map_location=self.device)
+        if isinstance(state, dict) and "model" in state:
+            self.model.load_state_dict(state["model"])
+            if "world_model" in state:
+                self.world_model.load_state_dict(state["world_model"])
+        else:
+            self.model.load_state_dict(state)

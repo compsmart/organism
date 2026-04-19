@@ -31,6 +31,23 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print an ASCII snapshot from the first evaluation episode.",
     )
+    parser.add_argument(
+        "--no-sleep",
+        action="store_true",
+        help="Disable sleep consolidation (for ablation).",
+    )
+    parser.add_argument(
+        "--surprise-coef",
+        type=float,
+        default=None,
+        help="Surprise reward coefficient (default: 0.05).",
+    )
+    parser.add_argument(
+        "--max-surprise",
+        type=float,
+        default=None,
+        help="Maximum surprise bonus before clamping (default: 0.1).",
+    )
     return parser.parse_args()
 
 
@@ -48,6 +65,7 @@ def summarize_episode(
     update_stats: dict[str, float],
     sleep_stats: dict[str, float],
     death_reason: str | None,
+    avg_surprise: float = 0.0,
 ) -> dict[str, Any]:
     summary = env.summary()
     summary.update(
@@ -58,6 +76,7 @@ def summarize_episode(
             "online_update": update_stats,
             "sleep_update": sleep_stats,
             "death_reason": death_reason,
+            "avg_surprise": avg_surprise,
         }
     )
     return summary
@@ -116,6 +135,10 @@ def build_experiment(args: argparse.Namespace) -> ExperimentConfig:
         config.train.run_name = args.run_name
     if args.output_dir is not None:
         config.train.output_dir = args.output_dir
+    if args.surprise_coef is not None:
+        config.agent.surprise_coef = args.surprise_coef
+    if args.max_surprise is not None:
+        config.agent.max_surprise_bonus = args.max_surprise
     return config
 
 
@@ -157,11 +180,25 @@ def main() -> None:
         death_reason: str | None = None
         last_update_stats: dict[str, float] = {}
 
+        total_surprise = 0.0
+        step_count = 0
+
         while not done:
+            prev_hidden = hidden
             step = learner.select_action(observation, hidden)
             next_observation, reward, done, info = env.step(step.action)
+
+            surprise = learner.compute_surprise(prev_hidden, step.action, step.hidden)
+            clamped_surprise = min(surprise, config.agent.max_surprise_bonus)
+            augmented_reward = reward + config.agent.surprise_coef * clamped_surprise
+
             next_value = learner.bootstrap_value(next_observation, step.hidden.detach())
-            last_update_stats = learner.online_update(step, reward, done, next_value)
+            last_update_stats = learner.online_update(
+                step, augmented_reward, done, next_value, prev_hidden=prev_hidden
+            )
+            last_update_stats["surprise"] = surprise
+            total_surprise += surprise
+            step_count += 1
 
             observation = next_observation
             hidden = step.hidden.detach()
@@ -174,7 +211,8 @@ def main() -> None:
             death_reason = info["death_reason"]
 
         learner.replay.add_episode(episode)
-        sleep_stats = learner.sleep_update()
+        sleep_stats = learner.sleep_update() if not args.no_sleep else {}
+        avg_surprise = total_surprise / max(step_count, 1)
         summary = summarize_episode(
             episode_index=episode_index,
             env=env,
@@ -183,6 +221,7 @@ def main() -> None:
             update_stats=last_update_stats,
             sleep_stats=sleep_stats,
             death_reason=death_reason,
+            avg_surprise=avg_surprise,
         )
         append_jsonl(metrics_path, summary)
 
@@ -195,7 +234,8 @@ def main() -> None:
                     f"energy={summary['energy']:.3f} "
                     f"damage={summary['damage']:.3f} "
                     f"fatigue={summary['fatigue']:.3f} "
-                    f"reflex={summary['reflex_overrides']}"
+                    f"reflex={summary['reflex_overrides']} "
+                    f"surprise={summary['avg_surprise']:.4f}"
                 )
             )
 
