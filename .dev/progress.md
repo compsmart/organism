@@ -29,3 +29,16 @@
 - [ ] Stage 3 ablation: memory vs no-memory under partial observability
 - [ ] Measure: does episodic memory improve food-finding under partial obs?
 - [ ] Fatigue management: agent still exhausts from turning
+
+### 2026-04-19 ~20:17 — Autonomous Loop: Lab Check + Ablation Launch
+
+**Lab findings (2 new):**
+- D-2660 (5-star): Key-space overlap IS causal for holonomic forgetting. Disjoint domains show positive transfer. Critical for Stage 4a key-space design.
+- D-2659 (4-star): Holonomic O(1) state 2.88x memory advantage confirmed, but length generalization fails beyond training context.
+
+**Action:** Launched 3 parallel ablation runs (300 eps each, seed=7):
+1. `ablation-memory` — partial obs + episodic memory (full Stage 3)
+2. `ablation-no-memory` — partial obs + no memory
+3. `ablation-full-vis` — full visibility + no memory (Stage 2 baseline)
+
+Results pending — will analyze on next invocation.

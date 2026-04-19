@@ -1,11 +1,26 @@
 {
   "current_stage": "3",
-  "stage_status": "implemented",
-  "last_lab_check": "2026-04-19T19:00:00Z",
+  "stage_status": "ablation_running",
+  "last_lab_check": "2026-04-19T20:17:00Z",
   "lab_tracks_watching": [
     "holonomic-sequence-model"
   ],
-  "last_findings_seen": ["D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
+  "last_findings_seen": ["D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
+  "new_findings_this_check": {
+    "D-2660": "5-star: Key-space overlap IS causal for holonomic forgetting. Disjoint=-0.064 (positive transfer), shared=unlearnable. Forgetting is domain-structural not architectural. Important for Stage 4a key-space design.",
+    "D-2659": "4-star: Holonomic O(1) state memory 2.88x advantage confirmed, but length generalization FAILS beyond training context. Constraint for variable-length organism episodes."
+  },
+  "pending_ablation": {
+    "task_ids": ["b6vr12wj2", "bxnwx0i00", "bcf31d9s7"],
+    "runs": {
+      "ablation-memory": "partial obs (0.3) + episodic memory (16 slots)",
+      "ablation-no-memory": "partial obs (0.3) + NO memory",
+      "ablation-full-vis": "full visibility (0.55) + NO memory (Stage 2 equiv)"
+    },
+    "episodes": 300,
+    "seed": 7,
+    "purpose": "Validate Stage 3 exit criteria: does episodic memory measurably improve performance under partial observability?"
+  },
   "last_training_run": {
     "name": "stage3",
     "episodes": 300,
@@ -17,13 +32,13 @@
     "Reflex overrides still high (40-100/episode) due to wall_center > 0.7 threshold",
     "Fatigue often maxes to 1.0 from excessive turning",
     "Agent still starves most episodes despite eating occasionally",
-    "Stage 3 exit criteria not yet validated (need ablation: memory vs no-memory under partial obs)"
+    "Stage 3 exit criteria not yet validated — ablation running"
   ],
   "next_actions": [
-    "Run Stage 3 ablation: partial obs + memory vs partial obs + no-memory vs full obs + no-memory",
-    "Validate exit criteria: measurable benefit from working memory",
-    "If exit criteria met, commit and plan Stage 4",
-    "Check lab for new holonomic findings relevant to Stage 4a"
+    "Collect ablation results and compare avg_return + food_eaten across 3 conditions",
+    "If memory condition outperforms no-memory under partial obs → exit criteria met",
+    "If not → investigate why and tune episodic memory or partial obs parameters",
+    "After validation, plan Stage 4 (Global Workspace)"
   ],
   "completed_stages": {
     "0": "Embodied sandbox — env, agent, reward, logging",
