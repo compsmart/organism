@@ -1,0 +1,365 @@
+from __future__ import annotations
+
+import random
+from collections import deque
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
+import torch
+from torch import Tensor, nn
+from torch.distributions import Categorical
+
+from .config import AgentConfig, TrainingConfig
+from .env import Action, ObsIndex
+
+
+class RecurrentActorCritic(nn.Module):
+    def __init__(self, observation_size: int, action_size: int, hidden_size: int) -> None:
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(observation_size, hidden_size),
+            nn.Tanh(),
+        )
+        self.rnn = nn.GRUCell(hidden_size, hidden_size)
+        self.policy_head = nn.Linear(hidden_size, action_size)
+        self.value_head = nn.Linear(hidden_size, 1)
+
+    def initial_hidden(self, batch_size: int, device: torch.device) -> Tensor:
+        return torch.zeros(batch_size, self.rnn.hidden_size, device=device)
+
+    def forward_step(self, observation: Tensor, hidden: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        encoded = self.encoder(observation)
+        next_hidden = self.rnn(encoded, hidden)
+        logits = self.policy_head(next_hidden)
+        value = self.value_head(next_hidden).squeeze(-1)
+        return next_hidden, logits, value
+
+
+class ReflexController:
+    """Hard-coded survival overrides to keep online learning stable."""
+
+    def override(self, observation: np.ndarray, proposed_action: int) -> tuple[int, bool]:
+        action = Action(proposed_action)
+        wall_left = observation[ObsIndex.WALL_LEFT]
+        wall_center = observation[ObsIndex.WALL_CENTER]
+        wall_right = observation[ObsIndex.WALL_RIGHT]
+        hazard_left = observation[ObsIndex.HAZARD_LEFT]
+        hazard_center = observation[ObsIndex.HAZARD_CENTER]
+        hazard_right = observation[ObsIndex.HAZARD_RIGHT]
+        food_contact = observation[ObsIndex.FOOD_CONTACT] > 0.5
+        shelter_contact = observation[ObsIndex.SHELTER_CONTACT] > 0.5
+        energy = observation[ObsIndex.ENERGY]
+        fatigue = observation[ObsIndex.FATIGUE]
+
+        if energy < 0.24 and food_contact and action != Action.EAT:
+            return int(Action.EAT), True
+        if fatigue > 0.82 and shelter_contact and action != Action.REST:
+            return int(Action.REST), True
+        if hazard_center > 0.62 and action in {Action.FORWARD, Action.EAT, Action.REST}:
+            return self._safer_turn(hazard_left, hazard_right), True
+        if wall_center > 0.9 and action == Action.FORWARD:
+            return self._safer_turn(wall_left, wall_right), True
+        return int(action), False
+
+    @staticmethod
+    def _safer_turn(left_intensity: float, right_intensity: float) -> int:
+        return int(Action.TURN_RIGHT if left_intensity >= right_intensity else Action.TURN_LEFT)
+
+
+@dataclass
+class PolicyStep:
+    hidden: Tensor
+    value: Tensor
+    log_prob: Tensor
+    entropy: Tensor
+    action: int
+    raw_action: int
+    reflex_override: bool
+
+
+@dataclass
+class EpisodeRecord:
+    observations: list[np.ndarray]
+    actions: list[int]
+    rewards: list[float]
+    dones: list[bool]
+
+    def as_arrays(self) -> dict[str, np.ndarray]:
+        return {
+            "observations": np.asarray(self.observations, dtype=np.float32),
+            "actions": np.asarray(self.actions, dtype=np.int64),
+            "rewards": np.asarray(self.rewards, dtype=np.float32),
+            "dones": np.asarray(self.dones, dtype=np.float32),
+        }
+
+
+class ReplayBuffer:
+    def __init__(self, capacity: int, seed: int) -> None:
+        self.capacity = capacity
+        self.episodes: deque[dict[str, np.ndarray]] = deque(maxlen=capacity)
+        self.rng = random.Random(seed)
+
+    def __len__(self) -> int:
+        return len(self.episodes)
+
+    def add_episode(self, episode: EpisodeRecord) -> None:
+        if not episode.actions:
+            return
+        self.episodes.append(episode.as_arrays())
+
+    def sample_batch(
+        self,
+        batch_size: int,
+        seq_len: int,
+        burn_in: int,
+    ) -> list[dict[str, np.ndarray | int]]:
+        if not self.episodes:
+            return []
+
+        batch = []
+        episodes = list(self.episodes)
+        for _ in range(batch_size):
+            episode = self.rng.choice(episodes)
+            episode_length = int(len(episode["actions"]))
+            if episode_length <= 0:
+                continue
+            train_len = min(seq_len, episode_length)
+            start_max = max(episode_length - train_len, 0)
+            start = self.rng.randint(0, start_max) if start_max > 0 else 0
+            burn_start = max(0, start - burn_in)
+            actual_burn = start - burn_start
+            stop = start + train_len
+            batch.append(
+                {
+                    "observations": episode["observations"][burn_start : stop + 1],
+                    "actions": episode["actions"][start:stop],
+                    "rewards": episode["rewards"][start:stop],
+                    "dones": episode["dones"][start:stop],
+                    "burn_in": actual_burn,
+                }
+            )
+        return batch
+
+
+class OrganismLearner:
+    def __init__(
+        self,
+        observation_size: int,
+        action_size: int,
+        agent_config: AgentConfig,
+        training_config: TrainingConfig,
+        seed: int,
+    ) -> None:
+        self.device = torch.device("cpu")
+        self.agent_config = agent_config
+        self.training_config = training_config
+        self.model = RecurrentActorCritic(observation_size, action_size, agent_config.hidden_size)
+        self.model.to(self.device)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=agent_config.learning_rate)
+        self.reflex = ReflexController()
+        self.replay = ReplayBuffer(training_config.replay_capacity, seed=seed)
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+
+    def initial_hidden(self, batch_size: int = 1) -> Tensor:
+        return self.model.initial_hidden(batch_size, self.device)
+
+    def select_action(
+        self,
+        observation: np.ndarray,
+        hidden: Tensor,
+        deterministic: bool = False,
+        track_grad: bool = True,
+    ) -> PolicyStep:
+        self.model.train(not deterministic)
+        observation_tensor = torch.as_tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+        use_no_grad = deterministic or not track_grad
+        if use_no_grad:
+            with torch.no_grad():
+                next_hidden, logits, value = self.model.forward_step(observation_tensor, hidden)
+                dist = Categorical(logits=logits)
+                raw_action_tensor = torch.argmax(logits, dim=-1) if deterministic else dist.sample()
+                raw_action = int(raw_action_tensor.item())
+                action, reflex_override = self.reflex.override(observation, raw_action)
+                executed_action_tensor = torch.tensor([action], dtype=torch.int64, device=self.device)
+                log_prob = dist.log_prob(executed_action_tensor)
+                entropy = dist.entropy()
+        else:
+            next_hidden, logits, value = self.model.forward_step(observation_tensor, hidden)
+            dist = Categorical(logits=logits)
+            raw_action_tensor = dist.sample()
+            raw_action = int(raw_action_tensor.item())
+            action, reflex_override = self.reflex.override(observation, raw_action)
+            executed_action_tensor = torch.tensor([action], dtype=torch.int64, device=self.device)
+            log_prob = dist.log_prob(executed_action_tensor)
+            entropy = dist.entropy()
+        return PolicyStep(
+            hidden=next_hidden,
+            value=value,
+            log_prob=log_prob,
+            entropy=entropy,
+            action=action,
+            raw_action=raw_action,
+            reflex_override=reflex_override,
+        )
+
+    def advance_hidden(self, observation: np.ndarray, hidden: Tensor) -> Tensor:
+        observation_tensor = torch.as_tensor(
+            observation,
+            dtype=torch.float32,
+            device=self.device,
+        ).unsqueeze(0)
+        with torch.no_grad():
+            next_hidden, _, _ = self.model.forward_step(observation_tensor, hidden)
+        return next_hidden.detach()
+
+    def bootstrap_value(self, next_observation: np.ndarray, hidden: Tensor) -> Tensor:
+        observation_tensor = torch.as_tensor(
+            next_observation,
+            dtype=torch.float32,
+            device=self.device,
+        ).unsqueeze(0)
+        with torch.no_grad():
+            _, _, next_value = self.model.forward_step(observation_tensor, hidden)
+        return next_value
+
+    def online_update(
+        self,
+        step: PolicyStep,
+        reward: float,
+        done: bool,
+        next_value: Tensor,
+    ) -> dict[str, float]:
+        reward_tensor = torch.tensor([reward], dtype=torch.float32, device=self.device)
+        done_mask = torch.tensor([0.0 if done else 1.0], dtype=torch.float32, device=self.device)
+        target = reward_tensor + self.agent_config.gamma * done_mask * next_value
+        advantage = target - step.value
+
+        policy_loss = -(step.log_prob * advantage.detach()).mean()
+        value_loss = advantage.pow(2).mean()
+        entropy_bonus = step.entropy.mean()
+        loss = (
+            policy_loss
+            + self.agent_config.value_coef * value_loss
+            - self.agent_config.entropy_coef * entropy_bonus
+        )
+
+        self.optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        nn.utils.clip_grad_norm_(self.model.parameters(), self.agent_config.grad_clip)
+        self.optimizer.step()
+        return {
+            "loss": float(loss.item()),
+            "policy_loss": float(policy_loss.item()),
+            "value_loss": float(value_loss.item()),
+            "entropy": float(entropy_bonus.item()),
+        }
+
+    def sleep_update(self) -> dict[str, float]:
+        if len(self.replay) < self.training_config.min_replay_episodes:
+            return {}
+
+        batches_run = 0
+        total_loss = 0.0
+        total_policy_loss = 0.0
+        total_value_loss = 0.0
+        total_entropy = 0.0
+
+        for _ in range(self.training_config.sleep_batches):
+            batch = self.replay.sample_batch(
+                batch_size=self.training_config.sleep_batch_size,
+                seq_len=self.training_config.sleep_seq_len,
+                burn_in=self.training_config.sleep_burn_in,
+            )
+            if not batch:
+                continue
+
+            segment_losses = []
+            segment_policy_losses = []
+            segment_value_losses = []
+            segment_entropies = []
+            for segment in batch:
+                observations = torch.as_tensor(
+                    segment["observations"], dtype=torch.float32, device=self.device
+                )
+                actions = torch.as_tensor(segment["actions"], dtype=torch.int64, device=self.device)
+                rewards = torch.as_tensor(segment["rewards"], dtype=torch.float32, device=self.device)
+                dones = torch.as_tensor(segment["dones"], dtype=torch.float32, device=self.device)
+                burn_in = int(segment["burn_in"])
+                hidden = self.initial_hidden()
+
+                if burn_in > 0:
+                    with torch.no_grad():
+                        for obs in observations[:burn_in]:
+                            hidden, _, _ = self.model.forward_step(obs.unsqueeze(0), hidden)
+
+                train_observations = observations[burn_in:]
+                values = []
+                logits = []
+                current_hidden = hidden
+                for index, obs in enumerate(train_observations):
+                    current_hidden, step_logits, step_value = self.model.forward_step(
+                        obs.unsqueeze(0), current_hidden
+                    )
+                    values.append(step_value.squeeze(0))
+                    if index < len(actions):
+                        logits.append(step_logits.squeeze(0))
+
+                if len(values) != len(actions) + 1:
+                    continue
+
+                current_values = torch.stack(values[:-1])
+                next_values = torch.stack(values[1:]).detach()
+                logits_tensor = torch.stack(logits)
+                dist = Categorical(logits=logits_tensor)
+                log_probs = dist.log_prob(actions)
+                entropy = dist.entropy().mean()
+                targets = rewards + self.agent_config.gamma * (1.0 - dones) * next_values
+                advantages = targets - current_values
+
+                policy_loss = -(log_probs * advantages.detach()).mean()
+                value_loss = advantages.pow(2).mean()
+                loss = (
+                    policy_loss
+                    + self.agent_config.value_coef * value_loss
+                    - self.agent_config.entropy_coef * entropy
+                )
+                segment_losses.append(loss)
+                segment_policy_losses.append(policy_loss.detach())
+                segment_value_losses.append(value_loss.detach())
+                segment_entropies.append(entropy.detach())
+
+            if not segment_losses:
+                continue
+
+            batch_loss = torch.stack(segment_losses).mean()
+            self.optimizer.zero_grad(set_to_none=True)
+            batch_loss.backward()
+            nn.utils.clip_grad_norm_(self.model.parameters(), self.agent_config.grad_clip)
+            self.optimizer.step()
+
+            batches_run += 1
+            total_loss += float(batch_loss.item())
+            total_policy_loss += float(torch.stack(segment_policy_losses).mean().item())
+            total_value_loss += float(torch.stack(segment_value_losses).mean().item())
+            total_entropy += float(torch.stack(segment_entropies).mean().item())
+
+        if batches_run == 0:
+            return {}
+
+        return {
+            "loss": total_loss / batches_run,
+            "policy_loss": total_policy_loss / batches_run,
+            "value_loss": total_value_loss / batches_run,
+            "entropy": total_entropy / batches_run,
+            "batches": float(batches_run),
+        }
+
+    def save(self, path: str) -> None:
+        torch.save(self.model.state_dict(), path)
+
+    def load(self, path: str) -> None:
+        state_dict = torch.load(path, map_location=self.device)
+        self.model.load_state_dict(state_dict)
