@@ -62,6 +62,7 @@ def summarize_episode(
     env: OrganismEnv,
     action_counts: dict[str, int],
     reflex_overrides: int,
+    food_eaten: int,
     update_stats: dict[str, float],
     sleep_stats: dict[str, float],
     death_reason: str | None,
@@ -73,6 +74,7 @@ def summarize_episode(
             "episode": episode_index,
             "action_counts": action_counts,
             "reflex_overrides": reflex_overrides,
+            "food_eaten": food_eaten,
             "online_update": update_stats,
             "sleep_update": sleep_stats,
             "death_reason": death_reason,
@@ -177,6 +179,7 @@ def main() -> None:
         done = False
         action_counts = {name: 0 for name in ACTION_NAMES.values()}
         reflex_overrides = 0
+        food_eaten = 0
         death_reason: str | None = None
         last_update_stats: dict[str, float] = {}
 
@@ -208,6 +211,7 @@ def main() -> None:
             episode.dones.append(done)
             action_counts[info["action_name"]] += 1
             reflex_overrides += int(step.reflex_override)
+            food_eaten += int(info.get("ate_food", False))
             death_reason = info["death_reason"]
 
         learner.replay.add_episode(episode)
@@ -218,6 +222,7 @@ def main() -> None:
             env=env,
             action_counts=action_counts,
             reflex_overrides=reflex_overrides,
+            food_eaten=food_eaten,
             update_stats=last_update_stats,
             sleep_stats=sleep_stats,
             death_reason=death_reason,
@@ -235,6 +240,7 @@ def main() -> None:
                     f"damage={summary['damage']:.3f} "
                     f"fatigue={summary['fatigue']:.3f} "
                     f"reflex={summary['reflex_overrides']} "
+                    f"food={summary['food_eaten']} "
                     f"surprise={summary['avg_surprise']:.4f}"
                 )
             )

@@ -12,7 +12,7 @@ class EnvironmentConfig:
     num_food_sources: int = 3
     num_hazards: int = 3
     sensor_range: float = 0.55
-    eat_radius: float = 0.08
+    eat_radius: float = 0.12
     shelter_radius: float = 0.12
     move_speed: float = 0.06
     turn_angle: float = 0.4

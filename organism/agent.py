@@ -73,7 +73,7 @@ class ReflexController:
         energy = observation[ObsIndex.ENERGY]
         fatigue = observation[ObsIndex.FATIGUE]
 
-        if energy < 0.24 and food_contact and action != Action.EAT:
+        if energy < 0.45 and food_contact and action != Action.EAT:
             return int(Action.EAT), True
         if fatigue > 0.82 and shelter_contact and action != Action.REST:
             return int(Action.REST), True

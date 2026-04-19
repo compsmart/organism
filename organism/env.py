@@ -195,7 +195,7 @@ class OrganismEnv:
         discomfort = self._discomfort()
         reward = (previous_discomfort - discomfort) + novelty_bonus
         if ate_food:
-            reward += 0.08
+            reward += 0.2
         if collision:
             reward -= 0.05
         if hazard_contacts:
