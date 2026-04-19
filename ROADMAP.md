@@ -273,12 +273,50 @@ Implementation:
 - workspace buffer
 - competition for access
 - broadcast to memory, planner, and action selector
+- replace GRU with holonomic recurrent core (see Stage 4a)
 
 Exit criteria:
 
 - one selected item can affect multiple subsystems at once
 - attention switching is measurable
 - capacity limits create realistic tradeoffs
+
+### Stage 4a: Holonomic Recurrent Core
+
+Replace the GRU working memory with a Holonomic Sequence Model (Marcella architecture). This is a transport-only recurrent core that uses parallel transport on a learned Riemannian manifold instead of linear gating.
+
+Motivation:
+
+- Stage 4 introduces multiple competing subsystems that can interfere with each other during learning. The holonomic model provides natural forgetting resistance with key-space separated representations (lab finding D-2658: zero catastrophic forgetting).
+- O(1) state (position + orthogonal frame) matches our existing fixed-size hidden state design.
+- Geometric structure may provide richer representations than GRU gating for multi-behavior coordination.
+
+Implementation:
+
+- learned metric network that defines manifold curvature from input
+- low-rank factored Christoffel symbols for the connection
+- Cayley transform for exact orthogonal rotations (critical per D-2654)
+- minimum d=256 (phase transition threshold per D-2652)
+- drop-in replacement for GRUCell in RecurrentActorCritic
+
+Key constraints from research:
+
+- requires d=256 minimum (sharp phase transition from d=128, landmark D-2652)
+- Cayley transform and input-conditioned scale_net are critical components (D-2654)
+- gain gate is dispensable (D-2654)
+- N=16 generalization is an open problem (D-2655)
+- EWC regularization is counterproductive (D-2658)
+
+Exit criteria:
+
+- holonomic core matches or exceeds GRU on single-behavior tasks
+- measurably less forgetting when training sequential behaviors
+- A/B comparison: holonomic vs GRU on multi-behavior coordination
+
+References:
+
+- Lab track: holonomic-sequence-model
+- Key findings: D-2652 (viability), D-2654 (ablation), D-2658 (forgetting)
 
 ### Stage 5: Self-Model
 

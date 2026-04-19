@@ -86,6 +86,8 @@ class SimulationSession:
             self.seed = seed
         self.observation = self.env.reset(seed=self.seed)
         self.hidden = self.learner.initial_hidden() if self.learner else None
+        if self.learner is not None:
+            self.learner.reset_memory()
         self.last_step = StepSnapshot()
         self.position_history = [self.env.agent_position.copy()]
 

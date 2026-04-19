@@ -14,6 +14,54 @@ from .config import AgentConfig, TrainingConfig
 from .env import Action, ObsIndex
 
 
+class MemoryBuffer:
+    """Sliding window of recent hidden states for episodic memory."""
+
+    def __init__(self, capacity: int, hidden_size: int) -> None:
+        self.capacity = capacity
+        self.hidden_size = hidden_size
+        self.buffer: list[Tensor] = []
+
+    def push(self, hidden: Tensor) -> None:
+        self.buffer.append(hidden.detach())
+        if len(self.buffer) > self.capacity:
+            self.buffer.pop(0)
+
+    def get_tensor(self, device: torch.device) -> Tensor:
+        if not self.buffer:
+            return torch.zeros(1, 0, self.hidden_size, device=device)
+        return torch.stack(self.buffer, dim=1)
+
+    def clear(self) -> None:
+        self.buffer.clear()
+
+
+class EpisodicMemory(nn.Module):
+    """Attention-based recall over recent hidden states."""
+
+    def __init__(self, hidden_size: int, memory_slots: int = 16) -> None:
+        super().__init__()
+        self.memory_slots = memory_slots
+        self.query_proj = nn.Linear(hidden_size, hidden_size)
+        self.key_proj = nn.Linear(hidden_size, hidden_size)
+        self.output_gate = nn.Sequential(
+            nn.Linear(hidden_size * 2, hidden_size),
+            nn.Sigmoid(),
+        )
+        self._scale = hidden_size ** -0.5
+
+    def forward(self, current_hidden: Tensor, memory_buffer: Tensor) -> Tensor:
+        if memory_buffer.size(1) == 0:
+            return current_hidden
+        query = self.query_proj(current_hidden).unsqueeze(1)
+        keys = self.key_proj(memory_buffer)
+        scores = (query * keys).sum(-1) * self._scale
+        weights = torch.softmax(scores, dim=-1)
+        readout = (weights.unsqueeze(-1) * memory_buffer).sum(1)
+        gate = self.output_gate(torch.cat([current_hidden, readout], dim=-1))
+        return current_hidden + gate * readout
+
+
 class WorldModel(nn.Module):
     """Predicts next GRU hidden state from current hidden state and action."""
 
@@ -36,24 +84,43 @@ class WorldModel(nn.Module):
 
 
 class RecurrentActorCritic(nn.Module):
-    def __init__(self, observation_size: int, action_size: int, hidden_size: int) -> None:
+    def __init__(
+        self,
+        observation_size: int,
+        action_size: int,
+        hidden_size: int,
+        episodic_memory_slots: int = 0,
+    ) -> None:
         super().__init__()
         self.encoder = nn.Sequential(
             nn.Linear(observation_size, hidden_size),
             nn.Tanh(),
         )
         self.rnn = nn.GRUCell(hidden_size, hidden_size)
+        self.episodic_memory = (
+            EpisodicMemory(hidden_size, episodic_memory_slots)
+            if episodic_memory_slots > 0
+            else None
+        )
         self.policy_head = nn.Linear(hidden_size, action_size)
         self.value_head = nn.Linear(hidden_size, 1)
 
     def initial_hidden(self, batch_size: int, device: torch.device) -> Tensor:
         return torch.zeros(batch_size, self.rnn.hidden_size, device=device)
 
-    def forward_step(self, observation: Tensor, hidden: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    def forward_step(
+        self,
+        observation: Tensor,
+        hidden: Tensor,
+        memory_buffer: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
         encoded = self.encoder(observation)
         next_hidden = self.rnn(encoded, hidden)
-        logits = self.policy_head(next_hidden)
-        value = self.value_head(next_hidden).squeeze(-1)
+        output = next_hidden
+        if self.episodic_memory is not None and memory_buffer is not None:
+            output = self.episodic_memory(next_hidden, memory_buffer)
+        logits = self.policy_head(output)
+        value = self.value_head(output).squeeze(-1)
         return next_hidden, logits, value
 
 
@@ -79,7 +146,7 @@ class ReflexController:
             return int(Action.REST), True
         if hazard_center > 0.62 and action in {Action.FORWARD, Action.EAT, Action.REST}:
             return self._safer_turn(hazard_left, hazard_right), True
-        if wall_center > 0.9 and action == Action.FORWARD:
+        if wall_center > 0.7 and action == Action.FORWARD:
             return self._safer_turn(wall_left, wall_right), True
         return int(action), False
 
@@ -175,7 +242,11 @@ class OrganismLearner:
         self.device = torch.device("cpu")
         self.agent_config = agent_config
         self.training_config = training_config
-        self.model = RecurrentActorCritic(observation_size, action_size, agent_config.hidden_size)
+        memory_slots = agent_config.episodic_memory_slots if agent_config.use_episodic_memory else 0
+        self.model = RecurrentActorCritic(
+            observation_size, action_size, agent_config.hidden_size,
+            episodic_memory_slots=memory_slots,
+        )
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=agent_config.learning_rate)
         self.world_model = WorldModel(agent_config.hidden_size, action_size)
@@ -184,6 +255,11 @@ class OrganismLearner:
             self.world_model.parameters(), lr=agent_config.wm_learning_rate
         )
         self.reflex = ReflexController()
+        self.memory_buffer: MemoryBuffer | None = (
+            MemoryBuffer(agent_config.episodic_memory_slots, agent_config.hidden_size)
+            if agent_config.use_episodic_memory
+            else None
+        )
         self.replay = ReplayBuffer(training_config.replay_capacity, seed=seed)
         torch.manual_seed(seed)
         np.random.seed(seed)
@@ -191,6 +267,15 @@ class OrganismLearner:
 
     def initial_hidden(self, batch_size: int = 1) -> Tensor:
         return self.model.initial_hidden(batch_size, self.device)
+
+    def reset_memory(self) -> None:
+        if self.memory_buffer is not None:
+            self.memory_buffer.clear()
+
+    def _mem_tensor(self) -> Tensor | None:
+        if self.memory_buffer is None:
+            return None
+        return self.memory_buffer.get_tensor(self.device)
 
     def select_action(
         self,
@@ -201,10 +286,11 @@ class OrganismLearner:
     ) -> PolicyStep:
         self.model.train(not deterministic)
         observation_tensor = torch.as_tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+        mem = self._mem_tensor()
         use_no_grad = deterministic or not track_grad
         if use_no_grad:
             with torch.no_grad():
-                next_hidden, logits, value = self.model.forward_step(observation_tensor, hidden)
+                next_hidden, logits, value = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
                 dist = Categorical(logits=logits)
                 raw_action_tensor = torch.argmax(logits, dim=-1) if deterministic else dist.sample()
                 raw_action = int(raw_action_tensor.item())
@@ -213,7 +299,7 @@ class OrganismLearner:
                 log_prob = dist.log_prob(executed_action_tensor)
                 entropy = dist.entropy()
         else:
-            next_hidden, logits, value = self.model.forward_step(observation_tensor, hidden)
+            next_hidden, logits, value = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
             dist = Categorical(logits=logits)
             raw_action_tensor = dist.sample()
             raw_action = int(raw_action_tensor.item())
@@ -221,6 +307,8 @@ class OrganismLearner:
             executed_action_tensor = torch.tensor([action], dtype=torch.int64, device=self.device)
             log_prob = dist.log_prob(executed_action_tensor)
             entropy = dist.entropy()
+        if self.memory_buffer is not None:
+            self.memory_buffer.push(next_hidden)
         return PolicyStep(
             hidden=next_hidden,
             value=value,
@@ -237,8 +325,11 @@ class OrganismLearner:
             dtype=torch.float32,
             device=self.device,
         ).unsqueeze(0)
+        mem = self._mem_tensor()
         with torch.no_grad():
-            next_hidden, _, _ = self.model.forward_step(observation_tensor, hidden)
+            next_hidden, _, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
+        if self.memory_buffer is not None:
+            self.memory_buffer.push(next_hidden)
         return next_hidden.detach()
 
     def bootstrap_value(self, next_observation: np.ndarray, hidden: Tensor) -> Tensor:
@@ -247,8 +338,9 @@ class OrganismLearner:
             dtype=torch.float32,
             device=self.device,
         ).unsqueeze(0)
+        mem = self._mem_tensor()
         with torch.no_grad():
-            _, _, next_value = self.model.forward_step(observation_tensor, hidden)
+            _, _, next_value = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
         return next_value
 
     def compute_surprise(
@@ -340,11 +432,19 @@ class OrganismLearner:
                 dones = torch.as_tensor(segment["dones"], dtype=torch.float32, device=self.device)
                 burn_in = int(segment["burn_in"])
                 hidden = self.initial_hidden()
+                local_mem = (
+                    MemoryBuffer(self.agent_config.episodic_memory_slots, self.agent_config.hidden_size)
+                    if self.memory_buffer is not None
+                    else None
+                )
 
                 if burn_in > 0:
                     with torch.no_grad():
                         for obs in observations[:burn_in]:
-                            hidden, _, _ = self.model.forward_step(obs.unsqueeze(0), hidden)
+                            mem_t = local_mem.get_tensor(self.device) if local_mem else None
+                            hidden, _, _ = self.model.forward_step(obs.unsqueeze(0), hidden, memory_buffer=mem_t)
+                            if local_mem is not None:
+                                local_mem.push(hidden)
 
                 train_observations = observations[burn_in:]
                 values = []
@@ -353,9 +453,12 @@ class OrganismLearner:
                 current_hidden = hidden
                 for index, obs in enumerate(train_observations):
                     hiddens.append(current_hidden)
+                    mem_t = local_mem.get_tensor(self.device) if local_mem else None
                     current_hidden, step_logits, step_value = self.model.forward_step(
-                        obs.unsqueeze(0), current_hidden
+                        obs.unsqueeze(0), current_hidden, memory_buffer=mem_t
                     )
+                    if local_mem is not None:
+                        local_mem.push(current_hidden)
                     values.append(step_value.squeeze(0))
                     if index < len(actions):
                         logits.append(step_logits.squeeze(0))
@@ -439,8 +542,8 @@ class OrganismLearner:
     def load(self, path: str) -> None:
         state = torch.load(path, map_location=self.device)
         if isinstance(state, dict) and "model" in state:
-            self.model.load_state_dict(state["model"])
+            self.model.load_state_dict(state["model"], strict=False)
             if "world_model" in state:
                 self.world_model.load_state_dict(state["world_model"])
         else:
-            self.model.load_state_dict(state)
+            self.model.load_state_dict(state, strict=False)

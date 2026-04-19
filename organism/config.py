@@ -30,6 +30,7 @@ class EnvironmentConfig:
     start_energy: float = 0.72
     start_damage: float = 0.0
     start_fatigue: float = 0.12
+    food_visible_range: float = 0.3
 
 
 @dataclass
@@ -43,6 +44,8 @@ class AgentConfig:
     wm_learning_rate: float = 1e-3
     surprise_coef: float = 0.02
     max_surprise_bonus: float = 0.1
+    episodic_memory_slots: int = 16
+    use_episodic_memory: bool = True
 
 
 @dataclass

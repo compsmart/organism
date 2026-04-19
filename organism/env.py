@@ -263,7 +263,9 @@ class OrganismEnv:
 
     def _observe(self) -> np.ndarray:
         available_food = self.food_positions[self.food_cooldowns == 0]
-        food_sensors = self._sector_response(available_food)
+        food_sensors = self._sector_response(
+            available_food, detection_range=self.config.food_visible_range
+        )
         hazard_sensors = self._sector_response(self.hazard_positions)
         wall_sensors = np.array(
             [self._wall_sensor(self.heading + offset) for offset in self.sector_offsets],
@@ -367,7 +369,10 @@ class OrganismEnv:
             return int(available_indices[nearest])
         return None
 
-    def _sector_response(self, targets: np.ndarray) -> np.ndarray:
+    def _sector_response(
+        self, targets: np.ndarray, detection_range: float | None = None
+    ) -> np.ndarray:
+        effective_range = detection_range if detection_range is not None else self.config.sensor_range
         response = np.zeros(3, dtype=np.float32)
         if len(targets) == 0:
             return response
@@ -375,11 +380,11 @@ class OrganismEnv:
         for target in targets:
             vector = target - self.agent_position
             distance = float(np.linalg.norm(vector))
-            if distance <= 1e-6 or distance > self.config.sensor_range:
+            if distance <= 1e-6 or distance > effective_range:
                 continue
 
             relative_angle = self._wrap_angle(self._angle_to(vector) - self.heading)
-            distance_weight = 1.0 - distance / self.config.sensor_range
+            distance_weight = 1.0 - distance / effective_range
             for index, sector_center in enumerate(self.sector_offsets):
                 angular_weight = max(0.0, np.cos(relative_angle - sector_center))
                 response[index] += distance_weight * angular_weight

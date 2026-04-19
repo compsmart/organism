@@ -48,6 +48,17 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Maximum surprise bonus before clamping (default: 0.1).",
     )
+    parser.add_argument(
+        "--no-memory",
+        action="store_true",
+        help="Disable episodic memory module (for ablation).",
+    )
+    parser.add_argument(
+        "--food-visible-range",
+        type=float,
+        default=None,
+        help="Food sensor detection range (default: 0.3).",
+    )
     return parser.parse_args()
 
 
@@ -98,6 +109,7 @@ def run_evaluation(
     for episode_index in range(config.train.eval_episodes):
         observation = eval_env.reset(seed=base_seed + episode_index)
         hidden = learner.initial_hidden()
+        learner.reset_memory()
         done = False
         while not done:
             step = learner.select_action(observation, hidden, deterministic=True)
@@ -141,6 +153,10 @@ def build_experiment(args: argparse.Namespace) -> ExperimentConfig:
         config.agent.surprise_coef = args.surprise_coef
     if args.max_surprise is not None:
         config.agent.max_surprise_bonus = args.max_surprise
+    if args.no_memory:
+        config.agent.use_episodic_memory = False
+    if args.food_visible_range is not None:
+        config.env.food_visible_range = args.food_visible_range
     return config
 
 
@@ -183,6 +199,7 @@ def main() -> None:
         death_reason: str | None = None
         last_update_stats: dict[str, float] = {}
 
+        learner.reset_memory()
         total_surprise = 0.0
         step_count = 0
 
