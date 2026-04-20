@@ -25,25 +25,25 @@ class EnvironmentConfig:
     rest_recovery: float = 0.08
     passive_healing: float = 0.012
     novelty_grid_size: int = 8
-    novelty_reward_scale: float = 0.03
+    novelty_reward_scale: float = 0.005
     food_respawn_steps: int = 10
     start_energy: float = 0.72
     start_damage: float = 0.0
     start_fatigue: float = 0.12
-    food_visible_range: float = 0.3
+    food_visible_range: float = 0.55
 
 
 @dataclass
 class AgentConfig:
-    hidden_size: int = 512
+    hidden_size: int = 128
     reference_hidden_size: int = 64
     learning_rate: float = 3e-3
     gamma: float = 0.97
     value_coef: float = 0.5
-    entropy_coef: float = 0.02
+    entropy_coef: float = 0.01
     grad_clip: float = 1.0
     wm_learning_rate: float = 1e-3
-    surprise_coef: float = 0.02
+    surprise_coef: float = 0.0
     max_surprise_bonus: float = 0.1
     episodic_memory_slots: int = 16
     use_episodic_memory: bool = True
@@ -58,8 +58,8 @@ class TrainingConfig:
     seed: int = 7
     episodes: int = 500
     log_every: int = 10
-    eval_every: int = 25
-    eval_episodes: int = 5
+    eval_every: int = 10
+    eval_episodes: int = 10
     replay_capacity: int = 64
     min_replay_episodes: int = 4
     sleep_batches: int = 4

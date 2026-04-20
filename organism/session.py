@@ -274,16 +274,23 @@ def discover_checkpoints(outputs_dir: Path) -> list[dict[str, str]]:
         return []
 
     discovered = []
-    for checkpoint in outputs_dir.glob("*/model.pt"):
+    for run_dir in outputs_dir.iterdir():
+        if not run_dir.is_dir():
+            continue
+        best = run_dir / "model_best.pt"
+        final = run_dir / "model.pt"
+        checkpoint = best if best.exists() else final
+        if not checkpoint.exists():
+            continue
         try:
             stat = checkpoint.stat()
         except OSError:
             continue
         discovered.append(
             {
-                "name": checkpoint.parent.name,
+                "name": run_dir.name,
                 "path": str(checkpoint.resolve()),
-                "config": str(checkpoint.with_name("config.json").resolve()),
+                "config": str((run_dir / "config.json").resolve()),
                 "modified": str(int(stat.st_mtime)),
             }
         )
