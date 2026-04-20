@@ -113,3 +113,15 @@ Runs in progress (~100 eps done each). Results next invocation.
 **Decision:** Mark Stage 4 as architecturally complete. The workspace infrastructure is ready for when multi-goal conflicts arise. Proceed to Stage 5.
 
 Next: Plan Stage 5 (Self-Model).
+
+### 2026-04-20 ~02:17 — Autonomous Loop: Stage 5 Implemented
+
+**Lab check:** 1 new finding (D-2682: overlap sweep confirms monotonic forgetting, Spearman ρ=1.0).
+
+**Stage 5: Self-Model — IMPLEMENTED**
+- SelfModel predicts agent's next body state (energy, damage, fatigue) from current state + action + hidden
+- Prediction error = ownership signal: low = self-caused, high = externally caused
+- Trained online each step, sm_loss logged in metrics
+- Smoke test passed (10 eps)
+
+Next: Full training run + validate ownership signal spikes on external events.

@@ -1,46 +1,37 @@
 {
-  "current_stage": "4",
-  "stage_status": "complete_architecturally",
-  "last_lab_check": "2026-04-20T01:47:00Z",
+  "current_stage": "5",
+  "stage_status": "implemented",
+  "last_lab_check": "2026-04-20T02:17:00Z",
   "lab_tracks_watching": [
     "holonomic-sequence-model"
   ],
-  "last_findings_seen": ["D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
-  "ablation_results": {
-    "workspace": {
-      "last50_avg_return": -0.722,
-      "eval_avg_return": -0.850,
-      "food_total": 61,
-      "episodes": 148
-    },
-    "no_workspace": {
-      "last50_avg_return": -0.658,
-      "eval_avg_return": -0.859,
-      "food_total": 162,
-      "episodes": 192
-    },
-    "conclusion": "Workspace and no-workspace perform equivalently (~-0.85 eval). Workspace does not yet show measurable benefit because the current single-goal task lacks competing priorities. Architecture is ready for Stages 5+ where multi-goal conflicts will exercise it."
+  "last_findings_seen": ["D-2682", "D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
+  "new_findings_this_check": {
+    "D-2682": "4-star: Key-space overlap sweep confirms monotonic forgetting (rho=1.0). Effect is forward transfer not catastrophic forgetting. Reinforces Stage 4a separated key-space design."
   },
   "last_training_run": {
-    "name": "ablation-workspace",
-    "episodes": 148,
-    "notes": "Workspace ablation: no clear benefit on single-goal task, architecturally sound"
+    "name": "stage5-smoke",
+    "episodes": 10,
+    "notes": "Self-model smoke test passed, sm_loss logging confirmed"
   },
   "known_issues": [
-    "Global workspace shows no measurable benefit yet — needs multi-goal scenarios to validate",
+    "Stage 5 needs full training run and validation",
+    "Global workspace shows no measurable benefit yet",
     "Agent still starves most episodes"
   ],
   "next_actions": [
-    "Plan and implement Stage 5: Self-Model — distinguish self-caused from external events",
-    "Stage 5 may create the competing priorities that exercise the workspace",
-    "Expose workspace attention weights in web UI (lower priority)"
+    "Run Stage 5 training (300 eps) to verify self-model learns accurate body predictions",
+    "Expose ownership signal in session/web UI",
+    "Validate: does ownership error spike on external events (hazard contact, eating)?",
+    "After validation, plan Stage 6 (Metacognition)"
   ],
   "completed_stages": {
-    "0": "Embodied sandbox — env, agent, reward, logging",
-    "1": "Homeostatic organism — reflexes, actor-critic, TD learning",
-    "2": "Predictive control — world model, surprise signal, sleep consolidation",
-    "3": "Partial observability and memory — episodic recall, validated via ablation",
-    "4": "Global Workspace — architecturally complete, benefit pending multi-goal tasks"
+    "0": "Embodied sandbox",
+    "1": "Homeostatic organism",
+    "2": "Predictive control",
+    "3": "Partial observability and memory",
+    "4": "Global Workspace (architecturally complete)",
+    "5": "Self-Model — implemented, needs validation"
   },
   "tuned_defaults": {
     "energy_decay": 0.005,
