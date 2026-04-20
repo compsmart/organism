@@ -256,6 +256,31 @@ Next: dreaming ablation (with-dream vs no-dream) for formal validation.
 
 Next: Stage 8 (Planning and Tool Use).
 
+### 2026-04-20 ~12:17 — ROADMAP COMPLETE: Stage 9 Implemented
+
+**Stage 9: Social and Language — IMPLEMENTED**
+- NarrationHead decodes hidden state into focus + intent labels
+- Focus: seeking_food, avoiding_danger, resting, exploring, uncertain
+- Intent: approach, retreat, hold, investigate
+- Labels grounded in actual internal state, not post-hoc rationalization
+- Exposed in web UI Cognition card
+
+**ALL 10 STAGES (0-9) OF THE BRAIN-INSPIRED AI ROADMAP ARE NOW IMPLEMENTED.**
+
+Architecture stack:
+0. Embodied sandbox (env, actions, observations)
+1. Homeostatic organism (drives, reflexes, actor-critic)
+2. Predictive control (world model, surprise signal)
+3. Partial observability + episodic memory (validated: 20% improvement)
+4. Global workspace (channel competition, detached broadcast)
+5. Self-model (body state prediction, ownership signal)
+6. Metacognition (confidence estimation, action modulation)
+7. Dreaming (counterfactual simulation, validated: 44% improvement)
+8. Planning (model-based lookahead, validated: stable)
+9. Social/language (introspective narration)
+
+Next phase: deeper training, holonomic integration (Stage 4a), environment complexity.
+
 ### 2026-04-20 ~10:17 — Autonomous Loop: Stage 8 Implemented
 
 **Lab check:** No new findings.
