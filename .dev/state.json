@@ -1,26 +1,28 @@
 {
   "current_stage": "7",
-  "stage_status": "checkpoint_ready",
-  "last_lab_check": "2026-04-20T08:17:00Z",
+  "stage_status": "ablation_running",
+  "last_lab_check": "2026-04-20T09:17:00Z",
   "lab_tracks_watching": [
     "holonomic-sequence-model"
   ],
   "last_findings_seen": ["L-917", "D-2719", "D-2710", "D-2682", "D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
-  "last_training_run": {
-    "name": "organism-v7",
+  "pending_ablation": {
+    "task_ids": ["b86ck01yv", "bz5z4i48o"],
+    "runs": {
+      "organism-v7": "full stack with dreaming + oscillation fix",
+      "no-dream": "full stack WITHOUT sleep/dreaming"
+    },
     "episodes": 300,
-    "best_eval_return": -0.069,
-    "final_eval_return": -0.376,
-    "notes": "Full Stage 0-7 stack. No policy collapse. Best eval -0.069 at ep275. Checkpoint saved for web UI."
+    "seed": 42,
+    "purpose": "Validate Stage 7 exit criteria: does dreaming improve post-sleep performance?"
   },
   "known_issues": [
-    "Stage 7 dreaming still needs ablation (with-dream vs no-dream) for formal validation",
     "Agent still starves most episodes but eats 0-4 food/ep"
   ],
   "next_actions": [
-    "Run dreaming ablation: organism-v7 (with dream) vs --no-sleep (no dream) 300 eps",
-    "After validation, implement Stage 8 (Planning and Tool Use)",
-    "Consider increasing episode count or hidden_size for better learning"
+    "Collect ablation results and compare dream vs no-dream",
+    "If dreaming improves performance → Stage 7 validated",
+    "After validation, implement Stage 8 (Planning and Tool Use)"
   ],
   "completed_stages": {
     "0": "Embodied sandbox",
@@ -30,7 +32,7 @@
     "4": "Global Workspace (validated)",
     "5": "Self-Model (architecturally complete)",
     "6": "Metacognition (validated)",
-    "7": "Dreaming — checkpoint ready, needs ablation validation"
+    "7": "Dreaming — ablation running (with oscillation fix)"
   },
   "tuned_defaults": {
     "energy_decay": 0.005,

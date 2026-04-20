@@ -228,3 +228,15 @@ Next: 300-ep validation to confirm post-sleep performance gains.
 - Checkpoint saved at `outputs/organism-v7/model.pt` for web UI
 
 Next: dreaming ablation (with-dream vs no-dream) for formal validation.
+
+### 2026-04-20 ~09:17 — Autonomous Loop: Dreaming Ablation Launched
+
+**Lab check:** No new findings.
+
+**Oscillation fix committed** (previous user session): reflex controller detects L/R ping-pong and forces FORWARD to break out.
+
+**Dreaming ablation launched** (300 eps each, seed=42, with oscillation fix):
+1. `organism-v7` — full stack with dreaming
+2. `no-dream` — full stack WITHOUT sleep/dreaming
+
+Results next invocation.
