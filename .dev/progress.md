@@ -281,4 +281,11 @@ Next: 300-ep validation, then Stage 9.
 - Food: 0.9/ep average in last 30 episodes
 - Planning is working — agent shows improved decision-making
 
-Results next invocation.
+### 2026-04-20 — Stage 8 VALIDATED
+
+**organism-v8 (300 eps, full Stage 0-8):**
+- No collapse, last-50 avg return: -0.506, food: 55 (1.1/ep)
+- Best eval: -0.163 at ep275
+- **Stage 8: VALIDATED. Stages 0-8 all complete.**
+
+Next: Stage 9 (Social and Language) — the final stage.
