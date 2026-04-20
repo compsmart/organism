@@ -269,3 +269,16 @@ Next: Stage 8 (Planning and Tool Use).
 **Stages 0-8 implemented.** Only Stage 9 (Social and Language) remains.
 
 Next: 300-ep validation, then Stage 9.
+
+### 2026-04-20 ~11:17 — Autonomous Loop: Stage 8 Validation Running
+
+**Lab check:** No new findings. AMM-CI running.
+
+**organism-v8 training (300 eps, full Stage 0-8 stack):**
+- 200/300 eps complete, still running
+- Stable: 29/30 unique returns (no collapse)
+- Max return: **+1.759** (best ever across all stages!)
+- Food: 0.9/ep average in last 30 episodes
+- Planning is working — agent shows improved decision-making
+
+Results next invocation.

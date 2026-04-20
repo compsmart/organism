@@ -1,24 +1,25 @@
 {
   "current_stage": "8",
-  "stage_status": "implemented",
-  "last_lab_check": "2026-04-20T10:17:00Z",
+  "stage_status": "training_running",
+  "last_lab_check": "2026-04-20T11:17:00Z",
   "lab_tracks_watching": [
     "holonomic-sequence-model"
   ],
   "last_findings_seen": ["L-917", "D-2719", "D-2710", "D-2682", "D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
-  "last_training_run": {
-    "name": "stage8-smoke",
-    "episodes": 10,
-    "notes": "Planning smoke test passed. GoalPlanner uses world model for 3-step lookahead."
+  "pending_training": {
+    "task_id": "bomr6yc4m",
+    "run_name": "organism-v8",
+    "episodes": 300,
+    "seed": 42,
+    "progress": "200/300 eps, stable (29/30 unique returns, max +1.759, food 0.9/ep)"
   },
   "known_issues": [
-    "Stage 8 needs 300-ep validation run",
-    "Agent still starves most episodes"
+    "Agent still starves most episodes but improving with planning"
   ],
   "next_actions": [
-    "Run 300-ep training with full Stage 0-8 stack to verify stability + performance",
-    "After validation, implement Stage 9 (Social and Language) — the final stage",
-    "Update web UI to show planning state"
+    "Collect organism-v8 results when complete",
+    "If stable, mark Stage 8 validated and implement Stage 9 (Social and Language)",
+    "Stage 9 is the final roadmap stage"
   ],
   "completed_stages": {
     "0": "Embodied sandbox",
@@ -29,7 +30,7 @@
     "5": "Self-Model (architecturally complete)",
     "6": "Metacognition (validated)",
     "7": "Dreaming (validated — 44% improvement)",
-    "8": "Planning — implemented, needs validation"
+    "8": "Planning — training 200/300 eps, stable so far"
   },
   "tuned_defaults": {
     "energy_decay": 0.005,
