@@ -224,6 +224,10 @@ def main() -> None:
                 step, augmented_reward, done, next_value, prev_hidden=prev_hidden
             )
             last_update_stats["surprise"] = surprise
+            sm_loss = learner.train_self_model(
+                observation, step.action, prev_hidden, next_observation
+            )
+            last_update_stats["sm_loss"] = sm_loss
             total_surprise += surprise
             step_count += 1
 

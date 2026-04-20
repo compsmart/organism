@@ -105,6 +105,39 @@ class GlobalWorkspace(nn.Module):
         return self.broadcast_proj(broadcast), weights
 
 
+BODY_STATE_INDICES = [13, 14, 15]  # energy, damage, fatigue
+BODY_STATE_SIZE = len(BODY_STATE_INDICES)
+
+
+class SelfModel(nn.Module):
+    """Predicts the agent's own next body state (energy, damage, fatigue) from current state + action.
+
+    Prediction error = externally-caused change (hazard damage, food found, etc.).
+    Low error = self-caused (expected outcome of own action).
+    High error = world-caused (something external happened).
+    """
+
+    def __init__(self, hidden_size: int, action_size: int, body_size: int = 3) -> None:
+        super().__init__()
+        self.action_embed = nn.Embedding(action_size, 8)
+        self.predictor = nn.Sequential(
+            nn.Linear(body_size + 8 + hidden_size, 32),
+            nn.ReLU(),
+            nn.Linear(32, body_size),
+        )
+        self.body_size = body_size
+
+    def forward(self, body_state: Tensor, action: Tensor, hidden: Tensor) -> Tensor:
+        """Predict next body state."""
+        action_emb = self.action_embed(action)
+        combined = torch.cat([body_state, action_emb, hidden], dim=-1)
+        return self.predictor(combined)
+
+    def ownership_error(self, predicted: Tensor, actual: Tensor) -> Tensor:
+        """Per-channel prediction error. High = externally caused."""
+        return (predicted - actual.detach()).pow(2)
+
+
 class WorldModel(nn.Module):
     """Predicts next GRU hidden state from current hidden state and action."""
 
@@ -308,6 +341,11 @@ class OrganismLearner:
         self.wm_optimizer = torch.optim.Adam(
             self.world_model.parameters(), lr=agent_config.wm_learning_rate
         )
+        self.self_model = SelfModel(agent_config.hidden_size, action_size)
+        self.self_model.to(self.device)
+        self.sm_optimizer = torch.optim.Adam(
+            self.self_model.parameters(), lr=agent_config.wm_learning_rate
+        )
         self.reflex = ReflexController()
         self.memory_buffer: MemoryBuffer | None = (
             MemoryBuffer(agent_config.episodic_memory_slots, agent_config.hidden_size)
@@ -405,6 +443,55 @@ class OrganismLearner:
             predicted = self.world_model(prev_hidden.detach(), action_t)
             error = (predicted - actual_hidden.detach()).pow(2).mean()
         return float(error.item())
+
+    def compute_ownership(
+        self,
+        prev_obs: np.ndarray,
+        action: int,
+        hidden: Tensor,
+        next_obs: np.ndarray,
+    ) -> dict[str, float]:
+        """Predict own body state change; high error = external event."""
+        with torch.no_grad():
+            body_idx = torch.tensor(BODY_STATE_INDICES, device=self.device)
+            prev_body = torch.as_tensor(
+                prev_obs[BODY_STATE_INDICES], dtype=torch.float32, device=self.device
+            ).unsqueeze(0)
+            next_body = torch.as_tensor(
+                next_obs[BODY_STATE_INDICES], dtype=torch.float32, device=self.device
+            ).unsqueeze(0)
+            action_t = torch.tensor([action], dtype=torch.int64, device=self.device)
+            predicted = self.self_model(prev_body, action_t, hidden.detach())
+            errors = self.self_model.ownership_error(predicted, next_body).squeeze(0)
+        return {
+            "ownership_energy": float(errors[0].item()),
+            "ownership_damage": float(errors[1].item()),
+            "ownership_fatigue": float(errors[2].item()),
+            "ownership_total": float(errors.mean().item()),
+        }
+
+    def train_self_model(
+        self,
+        prev_obs: np.ndarray,
+        action: int,
+        hidden: Tensor,
+        next_obs: np.ndarray,
+    ) -> float:
+        """Train self-model on body state prediction. Returns loss."""
+        prev_body = torch.as_tensor(
+            prev_obs[BODY_STATE_INDICES], dtype=torch.float32, device=self.device
+        ).unsqueeze(0)
+        next_body = torch.as_tensor(
+            next_obs[BODY_STATE_INDICES], dtype=torch.float32, device=self.device
+        ).unsqueeze(0)
+        action_t = torch.tensor([action], dtype=torch.int64, device=self.device)
+        predicted = self.self_model(prev_body, action_t, hidden.detach())
+        loss = (predicted - next_body.detach()).pow(2).mean()
+        self.sm_optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        nn.utils.clip_grad_norm_(self.self_model.parameters(), self.agent_config.grad_clip)
+        self.sm_optimizer.step()
+        return float(loss.item())
 
     def online_update(
         self,
@@ -589,7 +676,11 @@ class OrganismLearner:
 
     def save(self, path: str) -> None:
         torch.save(
-            {"model": self.model.state_dict(), "world_model": self.world_model.state_dict()},
+            {
+                "model": self.model.state_dict(),
+                "world_model": self.world_model.state_dict(),
+                "self_model": self.self_model.state_dict(),
+            },
             path,
         )
 
@@ -599,5 +690,7 @@ class OrganismLearner:
             self.model.load_state_dict(state["model"], strict=False)
             if "world_model" in state:
                 self.world_model.load_state_dict(state["world_model"])
+            if "self_model" in state:
+                self.self_model.load_state_dict(state["self_model"])
         else:
             self.model.load_state_dict(state, strict=False)
