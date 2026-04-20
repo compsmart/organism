@@ -232,13 +232,17 @@ class RecurrentActorCritic(nn.Module):
         workspace_weights = None
         if self.workspace is not None:
             broadcast, workspace_weights = self.workspace(observation, output)
-            output = output + broadcast
+            # Scale broadcast to prevent it from dominating the GRU output.
+            # Detach to avoid gradient feedback collapse.
+            output = output + 0.3 * broadcast.detach()
         logits = self.policy_head(output)
         value = self.value_head(output).squeeze(-1)
         if self.metacognition is not None:
             confidence = self.metacognition(output)
-            # When confidence is low, increase entropy (flatten logits)
-            logits = logits * (0.5 + 0.5 * confidence.unsqueeze(-1))
+            # Detach confidence from policy gradient to prevent feedback collapse.
+            # Confidence modulates behavior but trains only through its own loss.
+            scale = (0.7 + 0.3 * confidence.detach().unsqueeze(-1))
+            logits = logits * scale
         return next_hidden, logits, value, workspace_weights
 
 
