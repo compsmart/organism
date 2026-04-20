@@ -45,6 +45,8 @@ class SimulationSession:
         self.last_ownership: dict[str, float] = {}
         self.last_workspace_weights: list[float] = []
         self.last_confidence: float = 0.5
+        self.food_eaten: int = 0
+        self.last_ate_food: bool = False
         self.position_history: list[np.ndarray] = []
 
         if checkpoint is not None:
@@ -92,6 +94,8 @@ class SimulationSession:
         if self.learner is not None:
             self.learner.reset_memory()
         self.last_step = StepSnapshot()
+        self.food_eaten = 0
+        self.last_ate_food = False
         self.position_history = [self.env.agent_position.copy()]
 
     def randomize_seed(self) -> int:
@@ -167,6 +171,8 @@ class SimulationSession:
                 "reflex_override": self.last_step.reflex_override,
                 "surprise": self.last_surprise,
                 "confidence": self.last_confidence,
+                "food_eaten": self.food_eaten,
+                "ate_food": self.last_ate_food,
             },
             "world": {
                 "size": float(env.config.world_size),
@@ -225,6 +231,9 @@ class SimulationSession:
 
     def _apply_action(self, action: int, reflex_override: bool) -> StepSnapshot:
         self.observation, reward, done, info = self.env.step(action)
+        self.last_ate_food = info.get("ate_food", False)
+        if self.last_ate_food:
+            self.food_eaten += 1
         self.position_history.append(self.env.agent_position.copy())
         if len(self.position_history) > 160:
             self.position_history = self.position_history[-160:]

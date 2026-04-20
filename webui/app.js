@@ -37,6 +37,8 @@ const el = {
   rewardValue: document.getElementById("rewardValue"),
   actionValue: document.getElementById("actionValue"),
   reflexValue: document.getElementById("reflexValue"),
+  foodEatenValue: document.getElementById("foodEatenValue"),
+  ateFoodValue: document.getElementById("ateFoodValue"),
   energyBar: document.getElementById("energyBar"),
   damageBar: document.getElementById("damageBar"),
   fatigueBar: document.getElementById("fatigueBar"),

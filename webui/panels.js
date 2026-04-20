@@ -61,6 +61,15 @@ export function updateHomeostasis(el, episode) {
   el.actionValue.textContent = episode.action_name;
   el.reflexValue.textContent = episode.reflex_override ? "yes" : "no";
 
+  if (el.foodEatenValue) {
+    el.foodEatenValue.textContent = episode.food_eaten || 0;
+  }
+  if (el.ateFoodValue) {
+    el.ateFoodValue.textContent = episode.ate_food ? "YES" : "no";
+    el.ateFoodValue.style.color = episode.ate_food ? "#2e6b2e" : "";
+    el.ateFoodValue.style.fontWeight = episode.ate_food ? "800" : "";
+  }
+
   setBar(el.energyBar, episode.energy);
   setBar(el.damageBar, episode.damage);
   setBar(el.fatigueBar, episode.fatigue);
