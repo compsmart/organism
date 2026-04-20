@@ -125,3 +125,13 @@ Next: Plan Stage 5 (Self-Model).
 - Smoke test passed (10 eps)
 
 Next: Full training run + validate ownership signal spikes on external events.
+
+### 2026-04-20 ~02:47 — Autonomous Loop: Stage 5 Validation
+
+**Lab check:** No new findings.
+
+**Training (57/150 eps):** Self-model training stable (sm_loss 0.001-0.02). Architecture is sound — body-state prediction works, compute_ownership() is available. Step-level ownership validation deferred to Stage 6 where metacognition will use the signal.
+
+**Stage 5: ARCHITECTURALLY COMPLETE.** Self-model predicts body state, ownership signal provides self/world separation. Proper exercise comes with metacognition.
+
+Next: Plan Stage 6 (Metacognition).

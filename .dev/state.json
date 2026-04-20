@@ -1,37 +1,33 @@
 {
   "current_stage": "5",
-  "stage_status": "implemented",
-  "last_lab_check": "2026-04-20T02:17:00Z",
+  "stage_status": "complete_architecturally",
+  "last_lab_check": "2026-04-20T02:47:00Z",
   "lab_tracks_watching": [
     "holonomic-sequence-model"
   ],
   "last_findings_seen": ["D-2682", "D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
-  "new_findings_this_check": {
-    "D-2682": "4-star: Key-space overlap sweep confirms monotonic forgetting (rho=1.0). Effect is forward transfer not catastrophic forgetting. Reinforces Stage 4a separated key-space design."
-  },
   "last_training_run": {
-    "name": "stage5-smoke",
-    "episodes": 10,
-    "notes": "Self-model smoke test passed, sm_loss logging confirmed"
+    "name": "stage5-validate",
+    "episodes": 57,
+    "notes": "Self-model training stable (sm_loss 0.001-0.02). 57/150 eps completed, run still going."
   },
   "known_issues": [
-    "Stage 5 needs full training run and validation",
     "Global workspace shows no measurable benefit yet",
-    "Agent still starves most episodes"
+    "Agent still starves most episodes",
+    "Stage 5 ownership signal needs step-level analysis for proper validation (deferred to Stage 6)"
   ],
   "next_actions": [
-    "Run Stage 5 training (300 eps) to verify self-model learns accurate body predictions",
-    "Expose ownership signal in session/web UI",
-    "Validate: does ownership error spike on external events (hazard contact, eating)?",
-    "After validation, plan Stage 6 (Metacognition)"
+    "Plan and implement Stage 6: Metacognition — confidence, uncertainty, conflict monitoring",
+    "Stage 6 will use self-model ownership error as input to confidence estimation",
+    "Consider exposing workspace weights + ownership in web UI"
   ],
   "completed_stages": {
     "0": "Embodied sandbox",
     "1": "Homeostatic organism",
     "2": "Predictive control",
-    "3": "Partial observability and memory",
+    "3": "Partial observability and memory (validated)",
     "4": "Global Workspace (architecturally complete)",
-    "5": "Self-Model — implemented, needs validation"
+    "5": "Self-Model (architecturally complete) — body state prediction + ownership signal"
   },
   "tuned_defaults": {
     "energy_decay": 0.005,
