@@ -45,6 +45,7 @@ class SimulationSession:
         self.last_ownership: dict[str, float] = {}
         self.last_workspace_weights: list[float] = []
         self.last_confidence: float = 0.5
+        self.last_narration: dict = {}
         self.food_eaten: int = 0
         self.last_ate_food: bool = False
         self.position_history: list[np.ndarray] = []
@@ -130,6 +131,7 @@ class SimulationSession:
         intro = self.learner.introspect(self.observation, self.hidden)
         self.last_workspace_weights = intro.get("workspace_weights", [])
         self.last_confidence = intro.get("confidence", 0.5)
+        self.last_narration = self.learner.narrate(self.observation, self.hidden)
         return snapshot
 
     def step_manual(self, action: Action) -> StepSnapshot:
@@ -196,6 +198,7 @@ class SimulationSession:
                 "ownership": self.last_ownership,
                 "memory_slots_used": len(self.learner.memory_buffer.buffer) if self.learner and self.learner.memory_buffer else 0,
                 "memory_slots_total": self.config.agent.episodic_memory_slots if self.config.agent.use_episodic_memory else 0,
+                "narration": self.last_narration,
             },
             "sensors": {
                 "food": _triplet(

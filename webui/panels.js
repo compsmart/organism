@@ -126,4 +126,13 @@ export function updateCognition(el, cognition) {
     const f = (own.ownership_fatigue || 0).toFixed(4);
     el.ownershipDisplay.textContent = `energy ${e} · damage ${d} · fatigue ${f}`;
   }
+
+  // Narration (introspective report)
+  const narr = cognition.narration || {};
+  if (el.narrationFocus) {
+    el.narrationFocus.textContent = narr.focus || "--";
+  }
+  if (el.narrationIntent) {
+    el.narrationIntent.textContent = narr.intent || "--";
+  }
 }

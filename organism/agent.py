@@ -138,6 +138,28 @@ class SelfModel(nn.Module):
         return (predicted - actual.detach()).pow(2)
 
 
+NARRATION_FOCUSES = ["seeking_food", "avoiding_danger", "resting", "exploring", "uncertain"]
+NARRATION_INTENTS = ["approach", "retreat", "hold", "investigate"]
+
+
+class NarrationHead(nn.Module):
+    """Decodes hidden state into reportable focus and intent labels.
+
+    This is the language-like layer: the agent 'reports' what it's
+    doing by classifying its own internal state. Not natural language,
+    but structured introspective labels grounded in actual processing.
+    """
+
+    def __init__(self, hidden_size: int) -> None:
+        super().__init__()
+        self.focus_head = nn.Linear(hidden_size, len(NARRATION_FOCUSES))
+        self.intent_head = nn.Linear(hidden_size, len(NARRATION_INTENTS))
+
+    def forward(self, output: Tensor) -> tuple[Tensor, Tensor]:
+        """Return focus logits and intent logits."""
+        return self.focus_head(output), self.intent_head(output)
+
+
 class GoalPlanner(nn.Module):
     """Model-based planning: simulates short rollouts for each action using the world model.
 
@@ -231,6 +253,7 @@ class RecurrentActorCritic(nn.Module):
         use_global_workspace: bool = False,
         use_metacognition: bool = False,
         use_planning: bool = False,
+        use_narration: bool = False,
     ) -> None:
         super().__init__()
         self.encoder = nn.Sequential(
@@ -256,6 +279,11 @@ class RecurrentActorCritic(nn.Module):
         self.planner = (
             GoalPlanner(hidden_size, action_size, horizon=3)
             if use_planning
+            else None
+        )
+        self.narration = (
+            NarrationHead(hidden_size)
+            if use_narration
             else None
         )
         self.policy_head = nn.Linear(hidden_size, action_size)
@@ -449,6 +477,7 @@ class OrganismLearner:
             use_global_workspace=agent_config.use_global_workspace,
             use_metacognition=agent_config.use_metacognition,
             use_planning=agent_config.use_planning,
+            use_narration=agent_config.use_narration,
         )
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=agent_config.learning_rate)
@@ -573,6 +602,37 @@ class OrganismLearner:
             result["memory_slots_used"] = len(mem_buf.buffer)
             result["memory_slots_total"] = mem_buf.capacity
         return result
+
+    def narrate(self, observation: np.ndarray, hidden: Tensor) -> dict[str, Any]:
+        """Generate a structured introspective report of the agent's state."""
+        obs_t = torch.as_tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+        report: dict[str, Any] = {}
+
+        with torch.no_grad():
+            encoded = self.model.encoder(obs_t)
+            h = self.model.rnn(encoded, hidden)
+            output = h
+
+            if self.model.narration is not None:
+                focus_logits, intent_logits = self.model.narration(output)
+                focus_idx = int(focus_logits.argmax(dim=-1).item())
+                intent_idx = int(intent_logits.argmax(dim=-1).item())
+                report["focus"] = NARRATION_FOCUSES[focus_idx]
+                report["intent"] = NARRATION_INTENTS[intent_idx]
+                report["focus_probs"] = {
+                    NARRATION_FOCUSES[i]: float(p)
+                    for i, p in enumerate(torch.softmax(focus_logits, dim=-1).squeeze(0).tolist())
+                }
+
+            if self.model.metacognition is not None:
+                confidence = self.model.metacognition(output)
+                report["confidence"] = float(confidence.item())
+
+            report["energy"] = float(observation[BODY_STATE_INDICES[0]])
+            report["damage"] = float(observation[BODY_STATE_INDICES[1]])
+            report["fatigue"] = float(observation[BODY_STATE_INDICES[2]])
+
+        return report
 
     def compute_surprise(
         self, prev_hidden: Tensor, action: int, actual_hidden: Tensor

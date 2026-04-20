@@ -60,6 +60,8 @@ const el = {
   memoryDisplay: document.getElementById("memoryDisplay"),
   memoryBar: document.getElementById("memoryBar"),
   ownershipDisplay: document.getElementById("ownershipDisplay"),
+  narrationFocus: document.getElementById("narrationFocus"),
+  narrationIntent: document.getElementById("narrationIntent"),
 };
 
 let appState = null;

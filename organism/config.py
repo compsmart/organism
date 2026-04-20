@@ -49,6 +49,7 @@ class AgentConfig:
     use_global_workspace: bool = True
     use_metacognition: bool = True
     use_planning: bool = True
+    use_narration: bool = True
 
 
 @dataclass
