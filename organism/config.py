@@ -25,7 +25,7 @@ class EnvironmentConfig:
     rest_recovery: float = 0.08
     passive_healing: float = 0.012
     novelty_grid_size: int = 8
-    novelty_reward_scale: float = 0.005
+    novelty_reward_scale: float = 0.02
     food_respawn_steps: int = 10
     start_energy: float = 0.72
     start_damage: float = 0.0
@@ -35,12 +35,12 @@ class EnvironmentConfig:
 
 @dataclass
 class AgentConfig:
-    hidden_size: int = 128
+    hidden_size: int = 256
     reference_hidden_size: int = 64
     learning_rate: float = 3e-3
     gamma: float = 0.97
     value_coef: float = 0.5
-    entropy_coef: float = 0.01
+    entropy_coef: float = 0.02
     grad_clip: float = 1.0
     wm_learning_rate: float = 1e-3
     surprise_coef: float = 0.0
