@@ -103,3 +103,23 @@ Key findings relevant to organism project:
 - Counterfactual simulation: agent imagines alternative strategies in latent space
 - **VALIDATED**: 44% return improvement over no-dreaming, 17x more food eaten
 - Dreaming is the strongest validated feature after episodic memory (Stage 3)
+
+## Honest Performance Assessment
+
+**The organism never survives a full episode.** Even with all 10 stages, it starves
+in 88% of episodes (last 50 of organism-v8). It eats 1.1 food/ep on average but
+needs ~3-4 to sustain through 256 steps.
+
+**What "good" results actually mean:** "less negative return" = "ate some food before
+dying." The best eval (-0.163) is not survival — it's a less painful death.
+
+**Root causes:**
+1. 64 hidden dims shared by 10 architectural modules — capacity bottleneck
+2. 300 training episodes insufficient for complex multi-module architecture
+3. Total parameters only 63K — extremely small for the task complexity
+
+**What would help:**
+- hidden_size 64 → 128 (more capacity per module)
+- 500-1000 training episodes
+- Simpler starting environment (more food, smaller world)
+- Stage 4a holonomic core (d=256, forgetting resistance)
