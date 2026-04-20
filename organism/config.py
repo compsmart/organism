@@ -47,6 +47,7 @@ class AgentConfig:
     episodic_memory_slots: int = 16
     use_episodic_memory: bool = True
     use_global_workspace: bool = True
+    use_metacognition: bool = True
 
 
 @dataclass

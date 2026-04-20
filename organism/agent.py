@@ -159,6 +159,28 @@ class WorldModel(nn.Module):
         return (predicted - actual.detach()).pow(2).mean(dim=-1)
 
 
+class MetacognitionHead(nn.Module):
+    """Estimates confidence in current action selection.
+
+    Trained to predict whether the agent's value estimate is accurate.
+    High confidence = value prediction likely correct.
+    Low confidence = high uncertainty, agent should be cautious.
+    """
+
+    def __init__(self, hidden_size: int) -> None:
+        super().__init__()
+        self.confidence = nn.Sequential(
+            nn.Linear(hidden_size, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, output: Tensor) -> Tensor:
+        """Returns confidence score in [0, 1]."""
+        return self.confidence(output).squeeze(-1)
+
+
 class RecurrentActorCritic(nn.Module):
     def __init__(
         self,
@@ -167,6 +189,7 @@ class RecurrentActorCritic(nn.Module):
         hidden_size: int,
         episodic_memory_slots: int = 0,
         use_global_workspace: bool = False,
+        use_metacognition: bool = False,
     ) -> None:
         super().__init__()
         self.encoder = nn.Sequential(
@@ -182,6 +205,11 @@ class RecurrentActorCritic(nn.Module):
         self.workspace = (
             GlobalWorkspace(observation_size, hidden_size)
             if use_global_workspace
+            else None
+        )
+        self.metacognition = (
+            MetacognitionHead(hidden_size)
+            if use_metacognition
             else None
         )
         self.policy_head = nn.Linear(hidden_size, action_size)
@@ -207,6 +235,10 @@ class RecurrentActorCritic(nn.Module):
             output = output + broadcast
         logits = self.policy_head(output)
         value = self.value_head(output).squeeze(-1)
+        if self.metacognition is not None:
+            confidence = self.metacognition(output)
+            # When confidence is low, increase entropy (flatten logits)
+            logits = logits * (0.5 + 0.5 * confidence.unsqueeze(-1))
         return next_hidden, logits, value, workspace_weights
 
 
@@ -333,6 +365,7 @@ class OrganismLearner:
             observation_size, action_size, agent_config.hidden_size,
             episodic_memory_slots=memory_slots,
             use_global_workspace=agent_config.use_global_workspace,
+            use_metacognition=agent_config.use_metacognition,
         )
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=agent_config.learning_rate)
