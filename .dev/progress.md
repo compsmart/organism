@@ -71,3 +71,17 @@ Next: Plan Stage 4 (Global Workspace).
 **Result:** Agent no longer maxes fatigue every episode. Early episodes show fatigue near 0, positive returns more frequent. Known issue resolved.
 
 Next: Plan and implement Stage 4 (Global Workspace).
+
+### 2026-04-20 ~00:47 — Autonomous Loop: Stage 4 Implemented
+
+**Lab check:** No new findings. Holonomic paper needs revision (length gen failed).
+
+**Stage 4: Global Workspace — IMPLEMENTED**
+- GlobalWorkspace module: 4 specialist channels (food, danger, shelter, homeostasis)
+- Each channel encodes its observation subset independently
+- Channels compete via learned salience + softmax attention
+- Winning channel broadcast as residual to GRU output
+- --no-workspace CLI flag for ablation
+- Smoke test passed (10 eps): compiles, runs, fatigue low
+
+Next: Full training run + ablation to validate exit criteria.
