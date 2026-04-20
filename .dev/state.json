@@ -1,34 +1,39 @@
 {
   "current_stage": "6",
-  "stage_status": "stability_issue",
-  "last_lab_check": "2026-04-20T04:17:00Z",
+  "stage_status": "fix_testing",
+  "last_lab_check": "2026-04-20T05:17:00Z",
   "lab_tracks_watching": [
     "holonomic-sequence-model"
   ],
   "last_findings_seen": ["D-2682", "D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
+  "pending_training": {
+    "task_id": "b3soe2ax8",
+    "run_name": "fix-test",
+    "episodes": 300,
+    "seed": 42,
+    "purpose": "Verify workspace detach fix prevents policy collapse over 300 episodes"
+  },
   "last_training_run": {
-    "name": "full-stack",
-    "episodes": 150,
-    "notes": "Policy collapses at ~ep100 to fixed behavior (return=-0.866, 103 steps, 0 food). Early eps fine. Full architecture may interfere with learning."
+    "name": "diagnostic ablation",
+    "notes": "Workspace identified as collapse culprit. No-workspace=stable, no-memory(with workspace)=collapses. Fix: 0.3 * broadcast.detach()"
   },
   "known_issues": [
-    "BLOCKING: Full stack policy collapse after ~100 eps — agent converges to degenerate fixed policy",
-    "Likely cause: metacognition confidence scaling and/or workspace broadcast interfere with gradient signal",
-    "Need to investigate: disable metacognition and workspace individually to find culprit"
+    "Workspace collapse fix applied — testing with 300 eps to confirm",
+    "Agent still starves most episodes"
   ],
   "next_actions": [
-    "Diagnose policy collapse: run with --no-workspace and with metacognition disabled individually",
-    "Fix the stability issue before proceeding to Stage 7",
-    "Plan Stage 7 after stability is restored"
+    "Collect 300-ep fix-test results and verify no collapse",
+    "If stable, mark Stages 4-6 as validated and proceed to Stage 7",
+    "If collapse persists, consider removing workspace from default config"
   ],
   "completed_stages": {
     "0": "Embodied sandbox",
     "1": "Homeostatic organism",
     "2": "Predictive control",
     "3": "Partial observability and memory (validated)",
-    "4": "Global Workspace (architecturally complete)",
+    "4": "Global Workspace (fix applied, testing)",
     "5": "Self-Model (architecturally complete)",
-    "6": "Metacognition — implemented, stability issue under investigation"
+    "6": "Metacognition (fix applied, testing)"
   },
   "tuned_defaults": {
     "energy_decay": 0.005,

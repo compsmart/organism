@@ -172,3 +172,18 @@ Next: Full system stability test, then Stage 7 (Dreaming).
 - Likely cause: metacognition confidence scaling and/or workspace broadcast interfere with gradient signal
 
 **Action:** Need to diagnose which module causes the collapse before proceeding to Stage 7.
+
+### 2026-04-20 ~05:17 — Autonomous Loop: Collapse Diagnosed + Fixed
+
+**Diagnostic results:**
+- No-workspace (metacog ON): NO collapse, agent keeps learning at ep150
+- No-memory (workspace ON): COLLAPSES at ep~100, identical to full stack
+- **Root cause: workspace broadcast**, not metacognition
+
+**Fixes applied:**
+- Workspace: `output + 0.3 * broadcast.detach()` — limits magnitude, breaks gradient feedback
+- Metacognition: `0.7 + 0.3 * confidence.detach()` — narrower range, detached
+
+**Created `.dev/synthesis.md`** — comprehensive findings document covering training dynamics, architecture results, environment tuning, stability lessons, and lab research.
+
+**300-ep validation run launched** (fix-test, seed=42). Results next invocation.
