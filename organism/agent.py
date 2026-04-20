@@ -62,6 +62,49 @@ class EpisodicMemory(nn.Module):
         return current_hidden + gate * readout
 
 
+WORKSPACE_CHANNELS = {
+    "food": [0, 1, 2, 11],        # food_left, food_center, food_right, food_contact
+    "danger": [3, 4, 5, 6, 7, 8], # hazard L/C/R, wall L/C/R
+    "shelter": [9, 10, 12],        # shelter_alignment, shelter_proximity, shelter_contact
+    "homeostasis": [13, 14, 15, 16, 17],  # energy, damage, fatigue, novelty, stress
+}
+WORKSPACE_NUM_CHANNELS = len(WORKSPACE_CHANNELS)
+WORKSPACE_CHANNEL_INDICES = list(WORKSPACE_CHANNELS.values())
+
+
+class GlobalWorkspace(nn.Module):
+    """Limited-capacity broadcast: channels compete for workspace access via attention."""
+
+    def __init__(self, observation_size: int, hidden_size: int, num_channels: int = 4) -> None:
+        super().__init__()
+        self.num_channels = num_channels
+        self.channel_encoders = nn.ModuleList()
+        for indices in WORKSPACE_CHANNEL_INDICES:
+            self.channel_encoders.append(
+                nn.Sequential(nn.Linear(len(indices), hidden_size), nn.Tanh())
+            )
+        self.salience = nn.Linear(hidden_size, 1)
+        self.broadcast_proj = nn.Linear(hidden_size, hidden_size)
+
+    def forward(self, observation: Tensor, hidden: Tensor) -> tuple[Tensor, Tensor]:
+        """
+        Returns:
+            broadcast: (batch, hidden_size) — the winning channel's representation
+            attention_weights: (batch, num_channels) — competition result
+        """
+        channel_reps = []
+        for i, indices in enumerate(WORKSPACE_CHANNEL_INDICES):
+            idx = torch.tensor(indices, device=observation.device)
+            channel_obs = observation.index_select(-1, idx)
+            channel_reps.append(self.channel_encoders[i](channel_obs))
+
+        stacked = torch.stack(channel_reps, dim=1)  # (batch, num_channels, hidden)
+        scores = self.salience(stacked + hidden.unsqueeze(1)).squeeze(-1)  # (batch, num_channels)
+        weights = torch.softmax(scores, dim=-1)  # (batch, num_channels)
+        broadcast = (weights.unsqueeze(-1) * stacked).sum(1)  # (batch, hidden)
+        return self.broadcast_proj(broadcast), weights
+
+
 class WorldModel(nn.Module):
     """Predicts next GRU hidden state from current hidden state and action."""
 
@@ -90,6 +133,7 @@ class RecurrentActorCritic(nn.Module):
         action_size: int,
         hidden_size: int,
         episodic_memory_slots: int = 0,
+        use_global_workspace: bool = False,
     ) -> None:
         super().__init__()
         self.encoder = nn.Sequential(
@@ -100,6 +144,11 @@ class RecurrentActorCritic(nn.Module):
         self.episodic_memory = (
             EpisodicMemory(hidden_size, episodic_memory_slots)
             if episodic_memory_slots > 0
+            else None
+        )
+        self.workspace = (
+            GlobalWorkspace(observation_size, hidden_size)
+            if use_global_workspace
             else None
         )
         self.policy_head = nn.Linear(hidden_size, action_size)
@@ -113,15 +162,19 @@ class RecurrentActorCritic(nn.Module):
         observation: Tensor,
         hidden: Tensor,
         memory_buffer: Tensor | None = None,
-    ) -> tuple[Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor | None]:
         encoded = self.encoder(observation)
         next_hidden = self.rnn(encoded, hidden)
         output = next_hidden
         if self.episodic_memory is not None and memory_buffer is not None:
             output = self.episodic_memory(next_hidden, memory_buffer)
+        workspace_weights = None
+        if self.workspace is not None:
+            broadcast, workspace_weights = self.workspace(observation, output)
+            output = output + broadcast
         logits = self.policy_head(output)
         value = self.value_head(output).squeeze(-1)
-        return next_hidden, logits, value
+        return next_hidden, logits, value, workspace_weights
 
 
 class ReflexController:
@@ -246,6 +299,7 @@ class OrganismLearner:
         self.model = RecurrentActorCritic(
             observation_size, action_size, agent_config.hidden_size,
             episodic_memory_slots=memory_slots,
+            use_global_workspace=agent_config.use_global_workspace,
         )
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=agent_config.learning_rate)
@@ -290,7 +344,7 @@ class OrganismLearner:
         use_no_grad = deterministic or not track_grad
         if use_no_grad:
             with torch.no_grad():
-                next_hidden, logits, value = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
+                next_hidden, logits, value, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
                 dist = Categorical(logits=logits)
                 raw_action_tensor = torch.argmax(logits, dim=-1) if deterministic else dist.sample()
                 raw_action = int(raw_action_tensor.item())
@@ -299,7 +353,7 @@ class OrganismLearner:
                 log_prob = dist.log_prob(executed_action_tensor)
                 entropy = dist.entropy()
         else:
-            next_hidden, logits, value = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
+            next_hidden, logits, value, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
             dist = Categorical(logits=logits)
             raw_action_tensor = dist.sample()
             raw_action = int(raw_action_tensor.item())
@@ -327,7 +381,7 @@ class OrganismLearner:
         ).unsqueeze(0)
         mem = self._mem_tensor()
         with torch.no_grad():
-            next_hidden, _, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
+            next_hidden, _, _, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
         if self.memory_buffer is not None:
             self.memory_buffer.push(next_hidden)
         return next_hidden.detach()
@@ -340,7 +394,7 @@ class OrganismLearner:
         ).unsqueeze(0)
         mem = self._mem_tensor()
         with torch.no_grad():
-            _, _, next_value = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
+            _, _, next_value, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
         return next_value
 
     def compute_surprise(
@@ -442,7 +496,7 @@ class OrganismLearner:
                     with torch.no_grad():
                         for obs in observations[:burn_in]:
                             mem_t = local_mem.get_tensor(self.device) if local_mem else None
-                            hidden, _, _ = self.model.forward_step(obs.unsqueeze(0), hidden, memory_buffer=mem_t)
+                            hidden, _, _, _ = self.model.forward_step(obs.unsqueeze(0), hidden, memory_buffer=mem_t)
                             if local_mem is not None:
                                 local_mem.push(hidden)
 
@@ -454,7 +508,7 @@ class OrganismLearner:
                 for index, obs in enumerate(train_observations):
                     hiddens.append(current_hidden)
                     mem_t = local_mem.get_tensor(self.device) if local_mem else None
-                    current_hidden, step_logits, step_value = self.model.forward_step(
+                    current_hidden, step_logits, step_value, _ = self.model.forward_step(
                         obs.unsqueeze(0), current_hidden, memory_buffer=mem_t
                     )
                     if local_mem is not None:

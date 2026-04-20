@@ -59,6 +59,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Food sensor detection range (default: 0.3).",
     )
+    parser.add_argument(
+        "--no-workspace",
+        action="store_true",
+        help="Disable global workspace (for ablation).",
+    )
     return parser.parse_args()
 
 
@@ -157,6 +162,8 @@ def build_experiment(args: argparse.Namespace) -> ExperimentConfig:
         config.agent.use_episodic_memory = False
     if args.food_visible_range is not None:
         config.env.food_visible_range = args.food_visible_range
+    if args.no_workspace:
+        config.agent.use_global_workspace = False
     return config
 
 

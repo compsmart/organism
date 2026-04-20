@@ -46,6 +46,7 @@ class AgentConfig:
     max_surprise_bonus: float = 0.1
     episodic_memory_slots: int = 16
     use_episodic_memory: bool = True
+    use_global_workspace: bool = True
 
 
 @dataclass
