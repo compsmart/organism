@@ -468,6 +468,28 @@ class OrganismLearner:
             _, _, next_value, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
         return next_value
 
+    def introspect(
+        self, observation: np.ndarray, hidden: Tensor
+    ) -> dict[str, Any]:
+        """Return workspace weights and confidence for the current state."""
+        obs_t = torch.as_tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
+        mem = self._mem_tensor()
+        with torch.no_grad():
+            _, _, _, ws_weights = self.model.forward_step(obs_t, hidden, memory_buffer=mem)
+        result: dict[str, Any] = {}
+        if ws_weights is not None:
+            result["workspace_weights"] = [float(w) for w in ws_weights.squeeze(0).tolist()]
+        if self.model.metacognition is not None:
+            encoded = self.model.encoder(obs_t)
+            h = self.model.rnn(encoded, hidden)
+            confidence = self.model.metacognition(h)
+            result["confidence"] = float(confidence.item())
+        mem_buf = self.memory_buffer
+        if mem_buf is not None:
+            result["memory_slots_used"] = len(mem_buf.buffer)
+            result["memory_slots_total"] = mem_buf.capacity
+        return result
+
     def compute_surprise(
         self, prev_hidden: Tensor, action: int, actual_hidden: Tensor
     ) -> float:

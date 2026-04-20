@@ -42,6 +42,9 @@ class SimulationSession:
         self.observation: np.ndarray | None = None
         self.last_step = StepSnapshot()
         self.last_surprise: float = 0.0
+        self.last_ownership: dict[str, float] = {}
+        self.last_workspace_weights: list[float] = []
+        self.last_confidence: float = 0.5
         self.position_history: list[np.ndarray] = []
 
         if checkpoint is not None:
@@ -105,6 +108,7 @@ class SimulationSession:
         if self.observation is None:
             self.reset(seed=self.seed)
         prev_hidden = self.hidden
+        prev_obs = self.observation
         policy_step = self.learner.select_action(
             self.observation,
             self.hidden,
@@ -115,7 +119,14 @@ class SimulationSession:
         self.last_surprise = self.learner.compute_surprise(
             prev_hidden, policy_step.action, self.hidden
         )
-        return self._apply_action(policy_step.action, policy_step.reflex_override)
+        snapshot = self._apply_action(policy_step.action, policy_step.reflex_override)
+        self.last_ownership = self.learner.compute_ownership(
+            prev_obs, policy_step.action, prev_hidden, self.observation
+        )
+        intro = self.learner.introspect(self.observation, self.hidden)
+        self.last_workspace_weights = intro.get("workspace_weights", [])
+        self.last_confidence = intro.get("confidence", 0.5)
+        return snapshot
 
     def step_manual(self, action: Action) -> StepSnapshot:
         if self.observation is None:
@@ -155,6 +166,7 @@ class SimulationSession:
                 "reward": float(self.last_step.reward),
                 "reflex_override": self.last_step.reflex_override,
                 "surprise": self.last_surprise,
+                "confidence": self.last_confidence,
             },
             "world": {
                 "size": float(env.config.world_size),
@@ -170,6 +182,14 @@ class SimulationSession:
                 "trail": [_point_to_list(point) for point in self.position_history[-160:]],
                 "visitation": env.visitation.astype(int).tolist(),
                 "sector_offsets": [float(offset) for offset in env.sector_offsets],
+                "food_visible_range": float(env.config.food_visible_range),
+            },
+            "cognition": {
+                "workspace_weights": self.last_workspace_weights,
+                "workspace_channels": ["food", "danger", "shelter", "homeostasis"],
+                "ownership": self.last_ownership,
+                "memory_slots_used": len(self.learner.memory_buffer.buffer) if self.learner and self.learner.memory_buffer else 0,
+                "memory_slots_total": self.config.agent.episodic_memory_slots if self.config.agent.use_episodic_memory else 0,
             },
             "sensors": {
                 "food": _triplet(

@@ -114,11 +114,43 @@
               <div class="meter-head"><span>Surprise</span><strong id="surpriseValue">0.00</strong></div>
               <div class="bar surprise"><span id="surpriseBar"></span></div>
             </div>
+            <div class="meter">
+              <div class="meter-head"><span>Confidence</span><strong id="confidenceValue">0.00</strong></div>
+              <div class="bar confidence"><span id="confidenceBar"></span></div>
+            </div>
             <div class="stats-grid">
               <div><span>Return</span><strong id="returnValue">0.000</strong></div>
               <div><span>Reward</span><strong id="rewardValue">0.000</strong></div>
               <div><span>Last action</span><strong id="actionValue">none</strong></div>
               <div><span>Reflex</span><strong id="reflexValue">no</strong></div>
+            </div>
+          </section>
+
+          <section class="card cognition">
+            <div class="card-title">
+              <h2>Cognition</h2>
+              <p>Workspace attention, memory, and self-model signals.</p>
+            </div>
+            <div class="sensor-block">
+              <span>Workspace</span>
+              <strong id="workspaceDisplay">--</strong>
+            </div>
+            <div class="workspace-bars">
+              <div class="ws-row"><span>Food</span><div class="bar ws-food"><span id="wsFood"></span></div></div>
+              <div class="ws-row"><span>Danger</span><div class="bar ws-danger"><span id="wsDanger"></span></div></div>
+              <div class="ws-row"><span>Shelter</span><div class="bar ws-shelter"><span id="wsShelter"></span></div></div>
+              <div class="ws-row"><span>Homeo</span><div class="bar ws-homeo"><span id="wsHomeostasis"></span></div></div>
+            </div>
+            <div class="sensor-block">
+              <span>Memory</span>
+              <strong id="memoryDisplay">0 / 0 slots</strong>
+            </div>
+            <div class="meter">
+              <div class="bar memory"><span id="memoryBar"></span></div>
+            </div>
+            <div class="sensor-block">
+              <span>Ownership</span>
+              <strong id="ownershipDisplay">--</strong>
             </div>
           </section>
 
@@ -151,6 +183,6 @@
         </aside>
       </main>
     </div>
-    <script src="/static/app.js" defer></script>
+    <script type="module" src="/static/app.js"></script>
   </body>
   </html>

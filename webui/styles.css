@@ -386,6 +386,43 @@ input[type="number"] {
   background: linear-gradient(90deg, #7b68ee, #5a3fd6);
 }
 
+.bar.confidence span {
+  background: linear-gradient(90deg, #48b8d0, #2882a0);
+}
+
+.bar.memory span {
+  background: linear-gradient(90deg, #8fa4b0, #5c7a8a);
+}
+
+.bar.ws-food span { background: #67a35c; }
+.bar.ws-danger span { background: #cc6e58; }
+.bar.ws-shelter span { background: #8cbc9b; }
+.bar.ws-homeo span { background: #d58f63; }
+
+.workspace-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+}
+
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-row span {
+  font-size: 11px;
+  color: #6b7a6d;
+  min-width: 48px;
+}
+
+.ws-row .bar {
+  flex: 1;
+  height: 6px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
