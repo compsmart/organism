@@ -85,3 +85,14 @@ Next: Plan and implement Stage 4 (Global Workspace).
 - Smoke test passed (10 eps): compiles, runs, fatigue low
 
 Next: Full training run + ablation to validate exit criteria.
+
+### 2026-04-20 ~01:17 — Autonomous Loop: Stage 4 Ablation Launched
+
+**Lab check:** 1 new finding:
+- D-2671 (4-star): N=16 holonomic ceiling is architectural. Even d=512 fails. AMM external memory queued. Relevant for Stage 4a.
+
+**Action:** Launched Stage 4 ablation (300 eps, seed=7):
+1. `ablation-workspace` — full Stage 4 (global workspace enabled)
+2. `ablation-no-workspace` — no workspace (Stage 3 baseline)
+
+Runs in progress (~100 eps done each). Results next invocation.
