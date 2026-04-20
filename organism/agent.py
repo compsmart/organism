@@ -598,6 +598,83 @@ class OrganismLearner:
 
         return stats
 
+    def dream_rollout(self, steps: int = 16) -> dict[str, float]:
+        """Generate a synthetic episode using the world model and train on it.
+
+        Starts from a random replay hidden state, rolls forward using the world
+        model to predict next states and the policy to select actions. The
+        imagined trajectory trains the policy via TD, just like real experience.
+        This is counterfactual simulation — dreaming.
+        """
+        if len(self.replay) < self.training_config.min_replay_episodes:
+            return {}
+
+        # Sample a starting hidden state from replay
+        batch = self.replay.sample_batch(batch_size=1, seq_len=1, burn_in=4)
+        if not batch:
+            return {}
+
+        segment = batch[0]
+        observations = torch.as_tensor(
+            segment["observations"], dtype=torch.float32, device=self.device
+        )
+        hidden = self.initial_hidden()
+
+        # Burn in to get a realistic hidden state
+        with torch.no_grad():
+            for obs in observations:
+                hidden, _, _, _ = self.model.forward_step(obs.unsqueeze(0), hidden)
+
+        # Dream: roll forward using world model predictions
+        dream_loss = torch.tensor(0.0, device=self.device)
+        dream_steps = 0
+        current_hidden = hidden.detach()
+
+        for _ in range(steps):
+            # Policy selects action from current (imagined) hidden state
+            mem = self._mem_tensor()
+            _, logits, value, _ = self.model.forward_step(
+                observations[-1:], current_hidden, memory_buffer=mem
+            )
+            dist = Categorical(logits=logits)
+            action = dist.sample()
+            log_prob = dist.log_prob(action)
+            entropy = dist.entropy()
+
+            # World model predicts next hidden state
+            with torch.no_grad():
+                next_hidden = self.world_model(current_hidden.detach(), action)
+
+            # Bootstrap value from imagined next state
+            _, _, next_value, _ = self.model.forward_step(
+                observations[-1:], next_hidden.detach(), memory_buffer=mem
+            )
+
+            # TD target (no environment reward in dreams — use value improvement)
+            target = self.agent_config.gamma * next_value.detach()
+            advantage = target - value
+
+            policy_loss = -(log_prob * advantage.detach()).mean()
+            value_loss = advantage.pow(2).mean()
+            step_loss = (
+                policy_loss
+                + self.agent_config.value_coef * value_loss
+                - self.agent_config.entropy_coef * entropy.mean()
+            )
+            dream_loss = dream_loss + step_loss
+            dream_steps += 1
+            current_hidden = next_hidden.detach()
+
+        if dream_steps > 0:
+            avg_loss = dream_loss / dream_steps
+            self.optimizer.zero_grad(set_to_none=True)
+            avg_loss.backward()
+            nn.utils.clip_grad_norm_(self.model.parameters(), self.agent_config.grad_clip)
+            self.optimizer.step()
+            return {"dream_loss": float(avg_loss.item()), "dream_steps": dream_steps}
+
+        return {}
+
     def sleep_update(self) -> dict[str, float]:
         if len(self.replay) < self.training_config.min_replay_episodes:
             return {}

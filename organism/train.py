@@ -244,6 +244,9 @@ def main() -> None:
 
         learner.replay.add_episode(episode)
         sleep_stats = learner.sleep_update() if not args.no_sleep else {}
+        dream_stats = learner.dream_rollout(steps=16) if not args.no_sleep else {}
+        if dream_stats:
+            sleep_stats["dream_loss"] = dream_stats.get("dream_loss", 0.0)
         avg_surprise = total_surprise / max(step_count, 1)
         summary = summarize_episode(
             episode_index=episode_index,
