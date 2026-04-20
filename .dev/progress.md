@@ -295,6 +295,24 @@ Next phase: deeper training, holonomic integration (Stage 4a), environment compl
 
 **Path forward:** Create a new vast.ai instance with an onstart script that autonomously clones the repo, trains, and pushes the checkpoint back to git. No SSH needed — everything runs via vast.ai REST API and git HTTPS. Next invocation will implement this.
 
+### 2026-04-20 ~14:00 — Autonomous Training Scripts Built
+
+**Lab check:** MCP disconnected.
+
+**Built the SSH-bypass training pipeline:**
+- `scripts/onstart.sh` — installs deps, clones repo, runs training, uploads checkpoint+metrics+evaluations to 0x0.st (no auth, 30+ day retention). Echoes URLs with sentinel lines for the poller.
+- `scripts/launch_training.ps1` — auto-picks cheapest reliable offer (GTX 1070 @ $0.013/hr), creates instance with onstart embedded.
+- `scripts/fetch_checkpoint.ps1` — polls instance logs via vast.ai API (request_logs endpoint returns S3 URL), parses upload URLs, downloads to `outputs/<run-name>/`. `-Destroy` flag to tear down afterwards.
+
+**Verified:**
+- request_logs API works, returns S3 log URL
+- Offer search picks reasonable GPU
+- JSON body assembly correct
+
+**Entire pipeline runs over HTTPS/443 via WinHTTP — no SSH.**
+
+Next: launch first GPU training run and validate organism-v10 vs v8.
+
 ### 2026-04-20 ~10:17 — Autonomous Loop: Stage 8 Implemented
 
 **Lab check:** No new findings.
