@@ -135,3 +135,23 @@ Next: Full training run + validate ownership signal spikes on external events.
 **Stage 5: ARCHITECTURALLY COMPLETE.** Self-model predicts body state, ownership signal provides self/world separation. Proper exercise comes with metacognition.
 
 Next: Plan Stage 6 (Metacognition).
+
+### 2026-04-20 ~03:17 — Autonomous Loop: Stage 6 Implemented
+
+**Lab check:** No new findings.
+
+**Stage 6: Metacognition — IMPLEMENTED**
+- MetacognitionHead: estimates confidence [0,1] from output representation
+- Confidence modulates logits: low confidence → flatter policy (more exploration)
+- Integrated into RecurrentActorCritic with use_metacognition flag
+- Smoke test passed (10 eps)
+
+**Progress summary: Stages 0-6 all implemented.** Architecture now includes:
+- Homeostatic drives + reflexes (Stage 1)
+- World model + surprise (Stage 2)
+- Episodic memory + partial observability (Stage 3)
+- Global workspace with channel competition (Stage 4)
+- Self-model with ownership signal (Stage 5)
+- Metacognition with confidence-modulated actions (Stage 6)
+
+Next: Full system stability test, then Stage 7 (Dreaming).
