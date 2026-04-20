@@ -249,6 +249,9 @@ class RecurrentActorCritic(nn.Module):
 class ReflexController:
     """Hard-coded survival overrides to keep online learning stable."""
 
+    def __init__(self) -> None:
+        self._recent_reflex_actions: list[int] = []
+
     def override(self, observation: np.ndarray, proposed_action: int) -> tuple[int, bool]:
         action = Action(proposed_action)
         wall_left = observation[ObsIndex.WALL_LEFT]
@@ -263,14 +266,39 @@ class ReflexController:
         fatigue = observation[ObsIndex.FATIGUE]
 
         if energy < 0.45 and food_contact and action != Action.EAT:
-            return int(Action.EAT), True
+            return self._record(int(Action.EAT), True)
         if fatigue > 0.82 and shelter_contact and action != Action.REST:
-            return int(Action.REST), True
+            return self._record(int(Action.REST), True)
+
+        # Detect oscillation: if last 4 reflex actions alternate L/R, break out
+        if self._is_oscillating():
+            self._recent_reflex_actions.clear()
+            return self._record(int(Action.FORWARD), True)
+
         if hazard_center > 0.62 and action in {Action.FORWARD, Action.EAT, Action.REST}:
-            return self._safer_turn(hazard_left, hazard_right), True
+            return self._record(self._safer_turn(hazard_left, hazard_right), True)
         if wall_center > 0.7 and action == Action.FORWARD:
-            return self._safer_turn(wall_left, wall_right), True
+            return self._record(self._safer_turn(wall_left, wall_right), True)
+
+        self._recent_reflex_actions.clear()
         return int(action), False
+
+    def _record(self, action: int, is_reflex: bool) -> tuple[int, bool]:
+        self._recent_reflex_actions.append(action)
+        if len(self._recent_reflex_actions) > 6:
+            self._recent_reflex_actions = self._recent_reflex_actions[-6:]
+        return action, is_reflex
+
+    def _is_oscillating(self) -> bool:
+        recent = self._recent_reflex_actions
+        if len(recent) < 4:
+            return False
+        turns = recent[-4:]
+        left = int(Action.TURN_LEFT)
+        right = int(Action.TURN_RIGHT)
+        if all(t in (left, right) for t in turns):
+            return turns[0] != turns[1] and turns[1] != turns[2] and turns[2] != turns[3]
+        return False
 
     @staticmethod
     def _safer_turn(left_intensity: float, right_intensity: float) -> int:
