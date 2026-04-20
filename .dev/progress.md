@@ -255,3 +255,17 @@ Next: dreaming ablation (with-dream vs no-dream) for formal validation.
 **Stages 0-7 all complete.** organism-v7 checkpoint ready for web UI.
 
 Next: Stage 8 (Planning and Tool Use).
+
+### 2026-04-20 ~10:17 — Autonomous Loop: Stage 8 Implemented
+
+**Lab check:** No new findings.
+
+**Stage 8: Planning — IMPLEMENTED**
+- GoalPlanner module: 3-step lookahead using world model for each of 5 actions
+- Estimates future value per action, adds bonus to policy logits
+- Detached (0.3 * bonus.detach()) per stability lesson
+- Smoke test passed (10 eps)
+
+**Stages 0-8 implemented.** Only Stage 9 (Social and Language) remains.
+
+Next: 300-ep validation, then Stage 9.
