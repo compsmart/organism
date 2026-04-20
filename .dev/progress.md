@@ -155,3 +155,20 @@ Next: Plan Stage 6 (Metacognition).
 - Metacognition with confidence-modulated actions (Stage 6)
 
 Next: Full system stability test, then Stage 7 (Dreaming).
+
+### 2026-04-20 ~04:17 — Autonomous Loop: Stability Test + Web UI Done
+
+**Lab check:** No new findings.
+
+**Web UI refactored** (done in previous user session):
+- Split app.js (568 lines) into 3 modules: app.js, panels.js, renderer.js
+- Added confidence meter, workspace attention bars, memory display, ownership errors
+- Food visible range circle on canvas
+
+**Full stack stability test (150 eps, seed=42):**
+- ISSUE: Policy collapses at ~ep100 to fixed behavior (return=-0.866, 103 steps, 0 food, 0 reflex)
+- Early episodes (1-60) show learning (eating food, exploring)
+- After ~ep100 the policy degenerates to a fixed routine (probably walking until starvation)
+- Likely cause: metacognition confidence scaling and/or workspace broadcast interfere with gradient signal
+
+**Action:** Need to diagnose which module causes the collapse before proceeding to Stage 7.
