@@ -234,7 +234,8 @@ body::before {
 
 .controls,
 .metrics,
-.sensors {
+.sensors,
+.cognition {
   padding: 14px;
 }
 
