@@ -467,7 +467,7 @@ class OrganismLearner:
         training_config: TrainingConfig,
         seed: int,
     ) -> None:
-        self.device = torch.device("cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.agent_config = agent_config
         self.training_config = training_config
         memory_slots = agent_config.episodic_memory_slots if agent_config.use_episodic_memory else 0
