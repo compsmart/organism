@@ -35,7 +35,7 @@ class EnvironmentConfig:
 
 @dataclass
 class AgentConfig:
-    hidden_size: int = 64
+    hidden_size: int = 512
     learning_rate: float = 3e-3
     gamma: float = 0.97
     value_coef: float = 0.5
@@ -55,7 +55,7 @@ class AgentConfig:
 @dataclass
 class TrainingConfig:
     seed: int = 7
-    episodes: int = 150
+    episodes: int = 500
     log_every: int = 10
     eval_every: int = 25
     eval_episodes: int = 5
