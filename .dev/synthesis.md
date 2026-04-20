@@ -49,6 +49,7 @@ Accumulated findings from training experiments, ablations, and architecture deci
   - Diagnosed: workspace is the culprit, not metacognition
   - No-workspace runs don't collapse; no-memory (with workspace) does collapse
   - **Fix applied**: detach workspace broadcast from gradient (0.3 * broadcast.detach())
+- **Fix validated**: 300-ep run shows no collapse, first positive eval (+0.013), stable learning
 
 ### Stage 5: Self-Model
 - sm_loss stable at 0.001-0.02 across training

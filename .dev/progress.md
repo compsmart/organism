@@ -187,3 +187,15 @@ Next: Full system stability test, then Stage 7 (Dreaming).
 **Created `.dev/synthesis.md`** — comprehensive findings document covering training dynamics, architecture results, environment tuning, stability lessons, and lab research.
 
 **300-ep validation run launched** (fix-test, seed=42). Results next invocation.
+
+### 2026-04-20 — Workspace Fix Validated (300 eps)
+
+**300-ep fix-test results:**
+- NO policy collapse across full 300 episodes (was collapsing at ep~100 before fix)
+- First positive eval: +0.013 at ep175
+- Final eval: -0.376 (healthy, varied behavior)
+- Agent eats 0-3 food/ep consistently, ep300 return=+0.259
+
+**Stages 0-6 fully validated.** Full architecture stack (homeostasis + world model + episodic memory + workspace + self-model + metacognition) is stable.
+
+Next: Stage 7 (Dreaming and Counterfactual Simulation).

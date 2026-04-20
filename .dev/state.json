@@ -1,39 +1,33 @@
 {
   "current_stage": "6",
-  "stage_status": "fix_testing",
+  "stage_status": "validated",
   "last_lab_check": "2026-04-20T05:17:00Z",
   "lab_tracks_watching": [
     "holonomic-sequence-model"
   ],
   "last_findings_seen": ["D-2682", "D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
-  "pending_training": {
-    "task_id": "b3soe2ax8",
-    "run_name": "fix-test",
-    "episodes": 300,
-    "seed": 42,
-    "purpose": "Verify workspace detach fix prevents policy collapse over 300 episodes"
-  },
   "last_training_run": {
-    "name": "diagnostic ablation",
-    "notes": "Workspace identified as collapse culprit. No-workspace=stable, no-memory(with workspace)=collapses. Fix: 0.3 * broadcast.detach()"
+    "name": "fix-test",
+    "episodes": 300,
+    "best_eval_return": 0.013,
+    "final_eval_return": -0.376,
+    "notes": "Full stack stable across 300 eps. No policy collapse. First positive eval (+0.013 at ep175). Workspace detach fix confirmed."
   },
   "known_issues": [
-    "Workspace collapse fix applied — testing with 300 eps to confirm",
-    "Agent still starves most episodes"
+    "Agent still starves most episodes but eats food consistently (0-3/ep)"
   ],
   "next_actions": [
-    "Collect 300-ep fix-test results and verify no collapse",
-    "If stable, mark Stages 4-6 as validated and proceed to Stage 7",
-    "If collapse persists, consider removing workspace from default config"
+    "Plan and implement Stage 7: Dreaming and Counterfactual Simulation",
+    "Stage 7 requires: generative world model, counterfactual rollouts, synthetic replay"
   ],
   "completed_stages": {
     "0": "Embodied sandbox",
     "1": "Homeostatic organism",
     "2": "Predictive control",
     "3": "Partial observability and memory (validated)",
-    "4": "Global Workspace (fix applied, testing)",
+    "4": "Global Workspace (validated — detached broadcast)",
     "5": "Self-Model (architecturally complete)",
-    "6": "Metacognition (fix applied, testing)"
+    "6": "Metacognition (validated — detached confidence)"
   },
   "tuned_defaults": {
     "energy_decay": 0.005,
