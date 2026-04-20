@@ -9,17 +9,17 @@ from typing import Any
 class EnvironmentConfig:
     world_size: float = 1.0
     max_steps: int = 256
-    num_food_sources: int = 3
+    num_food_sources: int = 5
     num_hazards: int = 3
     sensor_range: float = 0.55
     eat_radius: float = 0.12
     shelter_radius: float = 0.12
     move_speed: float = 0.06
     turn_angle: float = 0.4
-    energy_decay: float = 0.005
-    movement_energy_cost: float = 0.01
-    turn_energy_cost: float = 0.005
-    food_energy_gain: float = 0.38
+    energy_decay: float = 0.003
+    movement_energy_cost: float = 0.008
+    turn_energy_cost: float = 0.004
+    food_energy_gain: float = 0.5
     hazard_radius: float = 0.1
     hazard_damage: float = 0.11
     rest_recovery: float = 0.08
@@ -30,7 +30,7 @@ class EnvironmentConfig:
     start_energy: float = 0.72
     start_damage: float = 0.0
     start_fatigue: float = 0.12
-    food_visible_range: float = 0.55
+    food_visible_range: float = 0.7
 
 
 @dataclass
