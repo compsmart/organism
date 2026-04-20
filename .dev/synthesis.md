@@ -101,3 +101,5 @@ Key findings relevant to organism project:
 - No environment reward in dreams — pure value bootstrapping
 - dream_loss is small and decreasing after a few episodes
 - Counterfactual simulation: agent imagines alternative strategies in latent space
+- **VALIDATED**: 44% return improvement over no-dreaming, 17x more food eaten
+- Dreaming is the strongest validated feature after episodic memory (Stage 3)

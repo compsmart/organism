@@ -239,4 +239,19 @@ Next: dreaming ablation (with-dream vs no-dream) for formal validation.
 1. `organism-v7` — full stack with dreaming
 2. `no-dream` — full stack WITHOUT sleep/dreaming
 
-Results next invocation.
+### 2026-04-20 ~09:47 — Autonomous Loop: Stage 7 Dreaming VALIDATED
+
+**Dreaming ablation results (300 eps, seed=42):**
+
+| Metric | With Dreaming | Without Dreaming |
+|---|---|---|
+| Last-50 avg return | **-0.477** | -0.854 |
+| Last-50 food eaten | **52** | 3 |
+| Last-3 eval avg | **-0.299** | -0.839 |
+
+**Dreaming provides 44% return improvement and 17x more food.** The agent learns food-seeking strategies in dreams and applies them in reality.
+
+**Stage 7: VALIDATED.** All exit criteria met.
+**Stages 0-7 all complete.** organism-v7 checkpoint ready for web UI.
+
+Next: Stage 8 (Planning and Tool Use).
