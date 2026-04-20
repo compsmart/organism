@@ -147,11 +147,11 @@ class OrganismEnv:
         if chosen_action == Action.TURN_LEFT:
             self.heading -= self.config.turn_angle
             self.energy -= self.config.turn_energy_cost
-            self.fatigue += 0.008
+            self.fatigue += 0.004
         elif chosen_action == Action.TURN_RIGHT:
             self.heading += self.config.turn_angle
             self.energy -= self.config.turn_energy_cost
-            self.fatigue += 0.008
+            self.fatigue += 0.004
         elif chosen_action == Action.FORWARD:
             delta = np.array([np.cos(self.heading), np.sin(self.heading)], dtype=np.float32)
             next_position = self.agent_position + delta * self.config.move_speed
@@ -173,7 +173,7 @@ class OrganismEnv:
             self.fatigue += 0.004
         elif chosen_action == Action.REST:
             shelter_distance = np.linalg.norm(self.agent_position - self.shelter_position)
-            recovery_scale = 1.0 if shelter_distance <= self.config.shelter_radius else 0.35
+            recovery_scale = 1.0 if shelter_distance <= self.config.shelter_radius else 0.5
             self.fatigue -= self.config.rest_recovery * recovery_scale
             self.damage -= self.config.passive_healing * recovery_scale
             self.energy += 0.006 * recovery_scale
