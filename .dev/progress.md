@@ -213,3 +213,18 @@ Next: Stage 7 (Dreaming and Counterfactual Simulation).
 - Smoke test passed (20 eps)
 
 Next: 300-ep validation to confirm post-sleep performance gains.
+
+### 2026-04-20 ~08:17 — Autonomous Loop: organism-v7 Checkpoint Ready
+
+**Lab check:** 2 new findings:
+- D-2719: CI forgetting confirmed with n=5 seeds (mean_forget=+0.004). Robust.
+- L-917: Task config must match between replication experiments.
+
+**organism-v7 checkpoint (300 eps, full Stage 0-7 stack):**
+- No policy collapse (workspace detach fix holding)
+- Best eval: -0.069 at ep275 (near zero — strong performance)
+- Food eaten: 0-4/ep consistently, positive returns achieved
+- Dream loss: small and varied (counterfactual sim working)
+- Checkpoint saved at `outputs/organism-v7/model.pt` for web UI
+
+Next: dreaming ablation (with-dream vs no-dream) for formal validation.
