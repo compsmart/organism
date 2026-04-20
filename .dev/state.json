@@ -1,45 +1,24 @@
 {
   "current_stage": "3",
   "stage_status": "validated",
-  "last_lab_check": "2026-04-19T20:47:00Z",
+  "last_lab_check": "2026-04-20T00:17:00Z",
   "lab_tracks_watching": [
     "holonomic-sequence-model"
   ],
   "last_findings_seen": ["D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
-  "ablation_results": {
-    "memory_partial_obs": {
-      "last50_avg_return": -0.564,
-      "food_per_episode": 0.69,
-      "episodes": 147
-    },
-    "no_memory_partial_obs": {
-      "last50_avg_return": -0.704,
-      "food_per_episode": 1.22,
-      "episodes": 160
-    },
-    "full_vis_no_memory": {
-      "last50_avg_return": -0.675,
-      "food_per_episode": 1.22,
-      "episodes": 159
-    },
-    "conclusion": "Memory improves returns 20% under partial obs. Memory+partial even outperforms full visibility. Exit criteria MET."
-  },
   "last_training_run": {
-    "name": "ablation-memory",
-    "episodes": 147,
-    "best_eval_return": -0.652,
-    "final_eval_return": -0.652,
-    "food_eaten_trend": "0.69/ep, 59/147 episodes with food"
+    "name": "fatigue-test",
+    "episodes": 100,
+    "notes": "Fatigue fix validated — early eps show fatigue near 0, positive returns achieved"
   },
   "known_issues": [
-    "Reflex overrides still high (40-100/episode) due to wall_center > 0.7 threshold",
-    "Fatigue often maxes to 1.0 from excessive turning",
+    "Reflex overrides still high in some episodes (40-90) but fatigue no longer always maxes",
     "Agent still starves most episodes despite eating occasionally"
   ],
   "next_actions": [
-    "Plan Stage 4: Global Workspace — limited-capacity broadcast system",
-    "Consider fatigue tuning before Stage 4 (agent exhausts from turning)",
-    "Review holonomic findings for Stage 4a integration planning"
+    "Plan and implement Stage 4: Global Workspace — limited-capacity broadcast system",
+    "Stage 4 requires: workspace buffer, competition for access, broadcast to subsystems",
+    "Consider Stage 4a holonomic integration alongside or after Stage 4"
   ],
   "completed_stages": {
     "0": "Embodied sandbox — env, agent, reward, logging",
@@ -56,6 +35,8 @@
     "food_reward_bonus": 0.2,
     "reflex_eat_threshold": 0.45,
     "wall_reflex_threshold": 0.7,
-    "episodic_memory_slots": 16
+    "episodic_memory_slots": 16,
+    "turn_fatigue": 0.004,
+    "rest_outside_shelter_scale": 0.5
   }
 }

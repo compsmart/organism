@@ -61,3 +61,13 @@ Results pending — will analyze on next invocation.
 **Stage 3: VALIDATED AND COMPLETE.**
 
 Next: Plan Stage 4 (Global Workspace).
+
+### 2026-04-20 ~00:17 — Autonomous Loop: Fatigue Fix
+
+**Lab check:** No new findings.
+
+**Fix:** Reduced turn fatigue (0.008→0.004) and improved out-of-shelter rest recovery (0.35x→0.5x).
+
+**Result:** Agent no longer maxes fatigue every episode. Early episodes show fatigue near 0, positive returns more frequent. Known issue resolved.
+
+Next: Plan and implement Stage 4 (Global Workspace).
