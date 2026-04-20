@@ -94,4 +94,10 @@ Key findings relevant to organism project:
 - **D-2671**: N=16 ceiling is architectural, AMM may help
 - **D-2682**: Overlap sweep confirms monotonic forgetting (rho=1.0)
 
-**Implications for Stage 4a**: Holonomic recurrent core needs d=256 minimum, key-space separation for multi-behavior learning, and potentially AMM external memory for complex tasks.
+**Implications for Stage 4a**: Holonomic recurrent core needs d=256 minimum, key-space separation for multi-behavior learning. AMM external memory **confirmed to solve N=16 ceiling** (D-2710, 5-star landmark).
+
+### Stage 7: Dreaming
+- dream_rollout() generates 16-step synthetic episodes via world model
+- No environment reward in dreams — pure value bootstrapping
+- dream_loss is small and decreasing after a few episodes
+- Counterfactual simulation: agent imagines alternative strategies in latent space

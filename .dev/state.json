@@ -1,33 +1,37 @@
 {
-  "current_stage": "6",
-  "stage_status": "validated",
-  "last_lab_check": "2026-04-20T05:17:00Z",
+  "current_stage": "7",
+  "stage_status": "implemented",
+  "last_lab_check": "2026-04-20T06:47:00Z",
   "lab_tracks_watching": [
     "holonomic-sequence-model"
   ],
-  "last_findings_seen": ["D-2682", "D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
+  "last_findings_seen": ["D-2710", "D-2682", "D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
+  "new_findings_this_check": {
+    "D-2710": "5-star LANDMARK: HSM + AMM learned-gate memory eliminates N=16 ceiling (1.000 vs 0.182). External memory solves holonomic scalability. Critical for Stage 4a — AMM integration is the path forward."
+  },
   "last_training_run": {
-    "name": "fix-test",
-    "episodes": 300,
-    "best_eval_return": 0.013,
-    "final_eval_return": -0.376,
-    "notes": "Full stack stable across 300 eps. No policy collapse. First positive eval (+0.013 at ep175). Workspace detach fix confirmed."
+    "name": "stage7-smoke",
+    "episodes": 20,
+    "notes": "Dream rollouts working. dream_loss decreasing (small values). Smoke test passed."
   },
   "known_issues": [
-    "Agent still starves most episodes but eats food consistently (0-3/ep)"
+    "Stage 7 needs 300-ep validation to confirm dreaming improves performance",
+    "Agent still starves most episodes"
   ],
   "next_actions": [
-    "Plan and implement Stage 7: Dreaming and Counterfactual Simulation",
-    "Stage 7 requires: generative world model, counterfactual rollouts, synthetic replay"
+    "Run 300-ep validation with dreaming to verify post-sleep performance gains",
+    "Run ablation: dreaming vs no-dreaming (--no-sleep)",
+    "After validation, implement Stage 8 (Planning and Tool Use)"
   ],
   "completed_stages": {
     "0": "Embodied sandbox",
     "1": "Homeostatic organism",
     "2": "Predictive control",
     "3": "Partial observability and memory (validated)",
-    "4": "Global Workspace (validated — detached broadcast)",
+    "4": "Global Workspace (validated)",
     "5": "Self-Model (architecturally complete)",
-    "6": "Metacognition (validated — detached confidence)"
+    "6": "Metacognition (validated)",
+    "7": "Dreaming — implemented, needs validation"
   },
   "tuned_defaults": {
     "energy_decay": 0.005,
@@ -42,6 +46,7 @@
     "turn_fatigue": 0.004,
     "rest_outside_shelter_scale": 0.5,
     "use_global_workspace": true,
-    "use_metacognition": true
+    "use_metacognition": true,
+    "dream_rollout_steps": 16
   }
 }

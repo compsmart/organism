@@ -199,3 +199,17 @@ Next: Full system stability test, then Stage 7 (Dreaming).
 **Stages 0-6 fully validated.** Full architecture stack (homeostasis + world model + episodic memory + workspace + self-model + metacognition) is stable.
 
 Next: Stage 7 (Dreaming and Counterfactual Simulation).
+
+### 2026-04-20 ~06:47 — Autonomous Loop: Stage 7 Implemented
+
+**Lab check:** 1 new LANDMARK finding:
+- D-2710 (5-star): HSM + AMM learned-gate memory eliminates N=16 ceiling (1.000 vs 0.182). External memory solves holonomic scalability. Critical for Stage 4a.
+
+**Stage 7: Dreaming — IMPLEMENTED**
+- dream_rollout() generates 16-step synthetic episodes using world model
+- Starts from replay buffer hidden states, rolls forward with policy + world model
+- Trains policy via TD on imagined trajectories (no environment interaction)
+- dream_loss logged in metrics, values small and decreasing
+- Smoke test passed (20 eps)
+
+Next: 300-ep validation to confirm post-sleep performance gains.
