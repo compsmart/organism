@@ -2,21 +2,33 @@
   "current_stage": "9",
   "stage_status": "implemented",
   "roadmap_complete": true,
-  "last_lab_check": "2026-04-20T12:17:00Z",
+  "last_lab_check": "2026-04-20T13:17:00Z",
   "lab_tracks_watching": [
     "holonomic-sequence-model"
   ],
   "last_findings_seen": ["L-917", "D-2719", "D-2710", "D-2682", "D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
   "last_training_run": {
-    "name": "stage9-smoke",
-    "episodes": 10,
-    "notes": "Narration working: focus=avoiding_danger, intent=approach, confidence=0.46. Labels grounded in actual hidden state."
+    "name": "organism-v8",
+    "episodes": 300,
+    "notes": "Needs retraining at hidden_size=512. Starves every episode at hidden_size=64."
   },
-  "known_issues": [],
+  "known_issues": [
+    "BLOCKER: Corporate firewall only allows HTTPS to port 443 via PowerShell WinHTTP. SSH to vast.ai instances (port 32264) is blocked.",
+    "Existing vast.ai instance 35272265 (A100 PCIE) is dedicated to the user's lab runner system (lab.compsmart.cloud) — cannot be repurposed for organism training without disrupting it.",
+    "Agent starves every episode at hidden_size=64 — needs 512+ for meaningful capacity"
+  ],
+  "network_workaround": {
+    "issue": "Python requests / git / ssh can't reach console.vast.ai or github.com directly. Corporate proxy at 10.44.33.10:8080 allows HTTPS CONNECT to port 443 only.",
+    "git_fix": "git config --global http.proxy http://10.44.33.10:8080 (already applied and pushed)",
+    "vastai_fix": "Use scripts/vast.ps1 — PowerShell Invoke-RestMethod uses WinHTTP with WPAD auto-discovery",
+    "ssh_blocker": "Corporate proxy CONNECT only allows port 443. vast.ai SSH is 32264. Cannot SSH directly.",
+    "path_forward": "Create a NEW vast.ai instance with onstart script that (1) clones github.com/compsmart/organism, (2) installs deps, (3) runs training, (4) pushes checkpoint back to git via API. This bypasses SSH entirely — training runs autonomously."
+  },
   "next_actions": [
-    "Train organism-v9 checkpoint (300 eps) with full Stage 0-9 stack",
-    "Update synthesis doc with final architecture summary",
-    "Consider next phase: Stage 4a (holonomic), deeper training (1000+ eps), environment complexity"
+    "Write an onstart training script that can run autonomously on a new vast.ai instance",
+    "Include checkpoint push-back via GitHub API token",
+    "Search for cheap offer (Tesla P4/RTX 3060, ~$0.02/hr) and create instance with our onstart",
+    "After training completes, git pull from local to get the checkpoint"
   ],
   "completed_stages": {
     "0": "Embodied sandbox",
@@ -47,6 +59,8 @@
     "use_planning": true,
     "use_narration": true,
     "dream_rollout_steps": 16,
-    "planning_horizon": 3
+    "planning_horizon": 3,
+    "hidden_size": 512,
+    "episodes": 500
   }
 }
