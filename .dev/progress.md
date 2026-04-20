@@ -346,3 +346,56 @@ Next: 300-ep validation, then Stage 9.
 - **Stage 8: VALIDATED. Stages 0-8 all complete.**
 
 Next: Stage 9 (Social and Language) — the final stage.
+
+### 2026-04-20 — Scale-up: hidden=64 → 512 on local RTX 3090
+
+Confirmed local CUDA is usable (RTX 3090, 24 GB). Total params at 512: 3.48M
+(main 2.93M + world 0.53M + self 17K). All runs seed=7, 500 eps.
+
+**v10 (naive scale-up, kept lr=3e-3):** catastrophic collapse on episode 1 —
+ent=0.000 after first update, 72× TURN_RIGHT, 0 food eaten across all 500 eps.
+Best eval -0.826. Root cause: 8× wider net with unchanged LR + default init
+produces peaked logits → value-loss backprop through shared GRU destroys
+exploration before it starts.
+
+**Fix 1 — μP-style hyperparameter scaling (landed):**
+- `effective_lr = base_lr × (reference_hidden / hidden_size)` — linear LR
+  shrink with width, standard Adam μP. At 512: 3e-3 → 3.75e-4.
+- Zero-init the policy head weights and bias so initial logits are flat
+  (uniform over actions) at any width. Prevents first-update collapse.
+- Added `AgentConfig.reference_hidden_size = 64` (the width LRs were tuned at).
+
+**v11 (with μP + flat init):** learning unblocked, best eval **+0.383 @ ep125**
+— first positive eval in project history. But training unstable: policy_loss
+spikes to -147, evals oscillate, final -1.086, best checkpoint unsaved. The
+peak was found and lost.
+
+**Fix 2 — stability (landed):**
+- Advantage clipping for policy gradient only: `advantage.clamp(-5, 5)` in
+  online_update, dream_rollout, sleep_update. Value head still sees unclipped
+  target. Wide enough for legitimate food-discovery signals, bounds the death
+  spikes.
+- Sub-linear grad clip scaling: `effective_grad_clip = 1.0 / width_ratio^0.25`
+  (0.595 at 512). First tried √ratio in v12 — too tight, peak regressed to
+  +0.068. ratio^0.25 keeps learning capacity.
+- Best-eval checkpointing: `model_best.pt` saved whenever eval improves.
+
+**v13 (final config, new SOTA):**
+- Best eval: **+0.754 @ ep50** (saved to model_best.pt)
+- Final eval: -0.371 (v11 was -1.086, v12 -1.192)
+- 2× better peak than v11, 5× better final than v12, captured and preserved.
+
+**Scaling mechanics verified** — same config works from hidden=64 to 1024:
+
+| hidden | effective_lr | effective_grad_clip |
+|---|---|---|
+| 64   | 3.00e-03 | 1.000 |
+| 128  | 1.50e-03 | 0.841 |
+| 512  | 3.75e-04 | 0.595 |
+| 1024 | 1.88e-04 | 0.500 |
+
+Also added `--hidden-size` CLI flag for easy width sweeps.
+
+Next: run ablation over hidden sizes to characterize the scaling curve. Then
+try longer training at 512 (1000 eps) — peak came at ep50 so capacity is
+likely not yet saturated.

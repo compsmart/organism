@@ -8,14 +8,21 @@
   ],
   "last_findings_seen": ["L-917", "D-2719", "D-2710", "D-2682", "D-2671", "D-2660", "D-2659", "D-2658", "D-2657", "D-2656", "D-2655", "D-2654", "D-2652"],
   "last_training_run": {
-    "name": "organism-v8",
-    "episodes": 300,
-    "notes": "Needs retraining at hidden_size=512. Starves every episode at hidden_size=64."
+    "name": "organism-v13",
+    "episodes": 500,
+    "hidden_size": 512,
+    "device": "cuda (local RTX 3090, 24GB)",
+    "best_eval_return": 0.754,
+    "best_eval_episode": 50,
+    "final_eval_return": -0.371,
+    "checkpoint": "outputs/organism-v13/model_best.pt",
+    "notes": "New SOTA. μP LR scaling (3.75e-4) + zero-init policy head + advantage clip ±5 + grad_clip/ratio^0.25 (0.595) + best-eval checkpointing. 2x peak improvement over v11 (+0.383)."
   },
   "known_issues": [
     "BLOCKER: Corporate firewall only allows HTTPS to port 443 via PowerShell WinHTTP. SSH to vast.ai instances (port 32264) is blocked.",
     "Existing vast.ai instance 35272265 (A100 PCIE) is dedicated to the user's lab runner system (lab.compsmart.cloud) — cannot be repurposed for organism training without disrupting it.",
-    "Agent starves every episode at hidden_size=64 — needs 512+ for meaningful capacity"
+    "Training still oscillates — best eval (+0.754 at ep50) is far from typical (final -0.371). A2C with sparse rewards is fundamentally wobbly; PPO migration would stabilize further.",
+    "Peak came at ep50 — possibly undertrained; try 1000 eps or earlier eval cadence."
   ],
   "network_workaround": {
     "issue": "Python requests / git / ssh can't reach console.vast.ai or github.com directly. Corporate proxy at 10.44.33.10:8080 allows HTTPS CONNECT to port 443 only.",
@@ -32,10 +39,10 @@
     "tested": "Log retrieval API verified working. Search picks GTX 1070 at $0.013/hr."
   },
   "next_actions": [
-    "Launch first GPU training run via: powershell -File scripts/launch_training.ps1",
-    "Wait ~1 hour, then fetch: powershell -File scripts/fetch_checkpoint.ps1 <id> -Destroy",
-    "Compare GPU-trained organism-v10 vs CPU-trained v8 (should show major improvement)",
-    "If successful, iterate on hidden_size / episodes for better performance"
+    "Sweep hidden_size in {64, 128, 256, 512, 1024} to characterize the scaling curve now that μP scaling makes it safe.",
+    "Try longer training at hidden=512 (1000-1500 eps) — v13 peaked at ep50 suggesting capacity not saturated.",
+    "Consider PPO migration to stabilize further — A2C oscillations are the main remaining instability.",
+    "Load organism-v13/model_best.pt into the web UI for visualization of the new SOTA."
   ],
   "completed_stages": {
     "0": "Embodied sandbox",

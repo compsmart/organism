@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 from collections import deque
 from dataclasses import dataclass
@@ -288,6 +289,12 @@ class RecurrentActorCritic(nn.Module):
         )
         self.policy_head = nn.Linear(hidden_size, action_size)
         self.value_head = nn.Linear(hidden_size, 1)
+        # Zero-init the policy head so initial logits are flat regardless of
+        # hidden_size. Prevents width-dependent collapse: at larger widths, the
+        # default init produces peaked logits that value-loss backprop amplifies
+        # into a deterministic policy on the first update.
+        nn.init.zeros_(self.policy_head.weight)
+        nn.init.zeros_(self.policy_head.bias)
 
     def initial_hidden(self, batch_size: int, device: torch.device) -> Tensor:
         return torch.zeros(batch_size, self.rnn.hidden_size, device=device)
@@ -480,16 +487,25 @@ class OrganismLearner:
             use_narration=agent_config.use_narration,
         )
         self.model.to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=agent_config.learning_rate)
+        # μP-style LR scaling: steps shrink linearly with width so the same
+        # base_lr produces stable training at any hidden_size. Grad clip tightens
+        # sub-linearly so destructive single steps are bounded at large widths.
+        width_ratio = agent_config.hidden_size / agent_config.reference_hidden_size
+        self.effective_lr = agent_config.learning_rate / width_ratio
+        self.effective_wm_lr = agent_config.wm_learning_rate / width_ratio
+        # Sub-linear grad clip scaling: softer ceiling at large widths without
+        # throttling legitimate signals (sqrt was too tight in v12).
+        self.effective_grad_clip = agent_config.grad_clip / (width_ratio ** 0.25)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.effective_lr)
         self.world_model = WorldModel(agent_config.hidden_size, action_size)
         self.world_model.to(self.device)
         self.wm_optimizer = torch.optim.Adam(
-            self.world_model.parameters(), lr=agent_config.wm_learning_rate
+            self.world_model.parameters(), lr=self.effective_wm_lr
         )
         self.self_model = SelfModel(agent_config.hidden_size, action_size)
         self.self_model.to(self.device)
         self.sm_optimizer = torch.optim.Adam(
-            self.self_model.parameters(), lr=agent_config.wm_learning_rate
+            self.self_model.parameters(), lr=self.effective_wm_lr
         )
         self.reflex = ReflexController()
         self.memory_buffer: MemoryBuffer | None = (
@@ -688,7 +704,7 @@ class OrganismLearner:
         loss = (predicted - next_body.detach()).pow(2).mean()
         self.sm_optimizer.zero_grad(set_to_none=True)
         loss.backward()
-        nn.utils.clip_grad_norm_(self.self_model.parameters(), self.agent_config.grad_clip)
+        nn.utils.clip_grad_norm_(self.self_model.parameters(), self.effective_grad_clip)
         self.sm_optimizer.step()
         return float(loss.item())
 
@@ -705,7 +721,11 @@ class OrganismLearner:
         target = reward_tensor + self.agent_config.gamma * done_mask * next_value
         advantage = target - step.value
 
-        policy_loss = -(step.log_prob * advantage.detach()).mean()
+        # Clip advantage for policy gradient only: prevents destructive spikes
+        # (e.g. policy_loss=-147 seen at scale) while letting the value head
+        # still learn from the full unclipped target.
+        policy_advantage = advantage.detach().clamp(-5.0, 5.0)
+        policy_loss = -(step.log_prob * policy_advantage).mean()
         value_loss = advantage.pow(2).mean()
         entropy_bonus = step.entropy.mean()
         loss = (
@@ -716,7 +736,7 @@ class OrganismLearner:
 
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
-        nn.utils.clip_grad_norm_(self.model.parameters(), self.agent_config.grad_clip)
+        nn.utils.clip_grad_norm_(self.model.parameters(), self.effective_grad_clip)
         self.optimizer.step()
 
         stats = {
@@ -732,7 +752,7 @@ class OrganismLearner:
             wm_loss = (predicted - step.hidden.detach()).pow(2).mean()
             self.wm_optimizer.zero_grad(set_to_none=True)
             wm_loss.backward()
-            nn.utils.clip_grad_norm_(self.world_model.parameters(), self.agent_config.grad_clip)
+            nn.utils.clip_grad_norm_(self.world_model.parameters(), self.effective_grad_clip)
             self.wm_optimizer.step()
             stats["wm_loss"] = float(wm_loss.item())
 
@@ -794,7 +814,8 @@ class OrganismLearner:
             target = self.agent_config.gamma * next_value.detach()
             advantage = target - value
 
-            policy_loss = -(log_prob * advantage.detach()).mean()
+            policy_advantage = advantage.detach().clamp(-5.0, 5.0)
+            policy_loss = -(log_prob * policy_advantage).mean()
             value_loss = advantage.pow(2).mean()
             step_loss = (
                 policy_loss
@@ -809,7 +830,7 @@ class OrganismLearner:
             avg_loss = dream_loss / dream_steps
             self.optimizer.zero_grad(set_to_none=True)
             avg_loss.backward()
-            nn.utils.clip_grad_norm_(self.model.parameters(), self.agent_config.grad_clip)
+            nn.utils.clip_grad_norm_(self.model.parameters(), self.effective_grad_clip)
             self.optimizer.step()
             return {"dream_loss": float(avg_loss.item()), "dream_steps": dream_steps}
 
@@ -892,7 +913,8 @@ class OrganismLearner:
                 targets = rewards + self.agent_config.gamma * (1.0 - dones) * next_values
                 advantages = targets - current_values
 
-                policy_loss = -(log_probs * advantages.detach()).mean()
+                policy_advantages = advantages.detach().clamp(-5.0, 5.0)
+                policy_loss = -(log_probs * policy_advantages).mean()
                 value_loss = advantages.pow(2).mean()
                 loss = (
                     policy_loss
@@ -919,7 +941,7 @@ class OrganismLearner:
             batch_loss = torch.stack(segment_losses).mean()
             self.optimizer.zero_grad(set_to_none=True)
             batch_loss.backward()
-            nn.utils.clip_grad_norm_(self.model.parameters(), self.agent_config.grad_clip)
+            nn.utils.clip_grad_norm_(self.model.parameters(), self.effective_grad_clip)
             self.optimizer.step()
 
             if segment_wm_losses:
@@ -927,7 +949,7 @@ class OrganismLearner:
                 self.wm_optimizer.zero_grad(set_to_none=True)
                 batch_wm_loss.backward()
                 nn.utils.clip_grad_norm_(
-                    self.world_model.parameters(), self.agent_config.grad_clip
+                    self.world_model.parameters(), self.effective_grad_clip
                 )
                 self.wm_optimizer.step()
                 total_wm_loss += float(batch_wm_loss.item())

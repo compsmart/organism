@@ -36,6 +36,7 @@ class EnvironmentConfig:
 @dataclass
 class AgentConfig:
     hidden_size: int = 512
+    reference_hidden_size: int = 64
     learning_rate: float = 3e-3
     gamma: float = 0.97
     value_coef: float = 0.5

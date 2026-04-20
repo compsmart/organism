@@ -64,6 +64,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable global workspace (for ablation).",
     )
+    parser.add_argument(
+        "--hidden-size",
+        type=int,
+        default=None,
+        help="GRU hidden size (default: 512). LR auto-scales via μP.",
+    )
     return parser.parse_args()
 
 
@@ -164,6 +170,8 @@ def build_experiment(args: argparse.Namespace) -> ExperimentConfig:
         config.env.food_visible_range = args.food_visible_range
     if args.no_workspace:
         config.agent.use_global_workspace = False
+    if args.hidden_size is not None:
+        config.agent.hidden_size = args.hidden_size
     return config
 
 
@@ -177,6 +185,7 @@ def main() -> None:
     metrics_path = run_root / "metrics.jsonl"
     evaluations_path = run_root / "evaluations.jsonl"
     checkpoint_path = run_root / "model.pt"
+    best_checkpoint_path = run_root / "model_best.pt"
 
     write_json(
         run_root / "config.json",
@@ -194,6 +203,9 @@ def main() -> None:
         training_config=config.train,
         seed=config.train.seed,
     )
+
+    best_eval_return = float("-inf")
+    best_eval_episode = 0
 
     for episode_index in range(1, config.train.episodes + 1):
         observation = env.reset(seed=config.train.seed + episode_index)
@@ -285,11 +297,17 @@ def main() -> None:
             )
             evaluation["episode"] = episode_index
             append_jsonl(evaluations_path, evaluation)
+            improved = evaluation["avg_return"] > best_eval_return
+            if improved:
+                best_eval_return = evaluation["avg_return"]
+                best_eval_episode = episode_index
+                learner.save(str(best_checkpoint_path))
             print(
                 (
                     f"eval@{episode_index:04d} "
                     f"avg_return={evaluation['avg_return']:.3f} "
                     f"avg_steps={evaluation['avg_steps']:.1f}"
+                    f"{' [BEST]' if improved else ''}"
                 )
             )
             if args.render_eval and "render" in evaluation:
@@ -299,6 +317,9 @@ def main() -> None:
     final_summary = {
         "episodes": config.train.episodes,
         "checkpoint": str(checkpoint_path),
+        "best_checkpoint": str(best_checkpoint_path) if best_eval_episode else None,
+        "best_eval_return": best_eval_return if best_eval_episode else None,
+        "best_eval_episode": best_eval_episode,
         "metrics_path": str(metrics_path),
         "evaluations_path": str(evaluations_path),
     }
