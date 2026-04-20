@@ -138,6 +138,46 @@ class SelfModel(nn.Module):
         return (predicted - actual.detach()).pow(2)
 
 
+class GoalPlanner(nn.Module):
+    """Model-based planning: simulates short rollouts for each action using the world model.
+
+    For each of the 5 actions, rolls forward `horizon` steps using the world
+    model to predict future hidden states, then estimates their value. The
+    action with the best predicted future value gets a bonus added to the
+    policy logits — biasing toward planned actions.
+    """
+
+    def __init__(self, hidden_size: int, action_size: int, horizon: int = 3) -> None:
+        super().__init__()
+        self.horizon = horizon
+        self.action_size = action_size
+        self.value_proj = nn.Linear(hidden_size, 1)
+
+    def forward(
+        self,
+        hidden: Tensor,
+        world_model: "WorldModel",
+    ) -> Tensor:
+        """Return per-action planning bonus logits (batch, action_size)."""
+        batch_size = hidden.size(0)
+        bonuses = torch.zeros(batch_size, self.action_size, device=hidden.device)
+
+        for action_idx in range(self.action_size):
+            action_t = torch.full((batch_size,), action_idx, dtype=torch.int64, device=hidden.device)
+            future_hidden = hidden.detach()
+            total_value = torch.zeros(batch_size, device=hidden.device)
+
+            for step in range(self.horizon):
+                with torch.no_grad():
+                    future_hidden = world_model(future_hidden, action_t)
+                value = self.value_proj(future_hidden).squeeze(-1)
+                total_value = total_value + value * (0.9 ** step)
+
+            bonuses[:, action_idx] = total_value
+
+        return bonuses
+
+
 class WorldModel(nn.Module):
     """Predicts next GRU hidden state from current hidden state and action."""
 
@@ -190,6 +230,7 @@ class RecurrentActorCritic(nn.Module):
         episodic_memory_slots: int = 0,
         use_global_workspace: bool = False,
         use_metacognition: bool = False,
+        use_planning: bool = False,
     ) -> None:
         super().__init__()
         self.encoder = nn.Sequential(
@@ -212,6 +253,11 @@ class RecurrentActorCritic(nn.Module):
             if use_metacognition
             else None
         )
+        self.planner = (
+            GoalPlanner(hidden_size, action_size, horizon=3)
+            if use_planning
+            else None
+        )
         self.policy_head = nn.Linear(hidden_size, action_size)
         self.value_head = nn.Linear(hidden_size, 1)
 
@@ -223,6 +269,7 @@ class RecurrentActorCritic(nn.Module):
         observation: Tensor,
         hidden: Tensor,
         memory_buffer: Tensor | None = None,
+        world_model: WorldModel | None = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor | None]:
         encoded = self.encoder(observation)
         next_hidden = self.rnn(encoded, hidden)
@@ -236,6 +283,9 @@ class RecurrentActorCritic(nn.Module):
             # Detach to avoid gradient feedback collapse.
             output = output + 0.3 * broadcast.detach()
         logits = self.policy_head(output)
+        if self.planner is not None and world_model is not None:
+            plan_bonus = self.planner(next_hidden, world_model)
+            logits = logits + 0.3 * plan_bonus.detach()
         value = self.value_head(output).squeeze(-1)
         if self.metacognition is not None:
             confidence = self.metacognition(output)
@@ -398,6 +448,7 @@ class OrganismLearner:
             episodic_memory_slots=memory_slots,
             use_global_workspace=agent_config.use_global_workspace,
             use_metacognition=agent_config.use_metacognition,
+            use_planning=agent_config.use_planning,
         )
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=agent_config.learning_rate)
@@ -445,9 +496,10 @@ class OrganismLearner:
         observation_tensor = torch.as_tensor(observation, dtype=torch.float32, device=self.device).unsqueeze(0)
         mem = self._mem_tensor()
         use_no_grad = deterministic or not track_grad
+        wm = self.world_model if self.model.planner is not None else None
         if use_no_grad:
             with torch.no_grad():
-                next_hidden, logits, value, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
+                next_hidden, logits, value, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem, world_model=wm)
                 dist = Categorical(logits=logits)
                 raw_action_tensor = torch.argmax(logits, dim=-1) if deterministic else dist.sample()
                 raw_action = int(raw_action_tensor.item())
@@ -456,7 +508,7 @@ class OrganismLearner:
                 log_prob = dist.log_prob(executed_action_tensor)
                 entropy = dist.entropy()
         else:
-            next_hidden, logits, value, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem)
+            next_hidden, logits, value, _ = self.model.forward_step(observation_tensor, hidden, memory_buffer=mem, world_model=wm)
             dist = Categorical(logits=logits)
             raw_action_tensor = dist.sample()
             raw_action = int(raw_action_tensor.item())

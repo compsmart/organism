@@ -48,6 +48,7 @@ class AgentConfig:
     use_episodic_memory: bool = True
     use_global_workspace: bool = True
     use_metacognition: bool = True
+    use_planning: bool = True
 
 
 @dataclass
