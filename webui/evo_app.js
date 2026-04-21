@@ -218,7 +218,7 @@ el.startBtn?.addEventListener("click", () => {
     autoplayTimer = null;
     el.startBtn.textContent = "▶ Start";
   } else {
-    autoplayTimer = setInterval(stepEvolution, 120);
+    autoplayTimer = setInterval(stepEvolution, 200);
     el.startBtn.textContent = "⏸ Pause";
   }
 });

@@ -85,51 +85,45 @@ function drawOrganism(ctx, org, scene, isSelected) {
   const radius = (BASE_ORGANISM_RADIUS * v.body_size * (0.5 + 0.5 * org.energy)) * (scene.size / 600);
   const r = Math.max(5, radius);
 
-  const baseColor = `hsl(${v.color_h}, ${Math.round(v.color_s * 100)}%, ${Math.round(v.color_l * 100)}%)`;
-  const dmgAlpha = org.damage * 0.5;
+  // Blend damage into lightness so healthy=bright, damaged=dark — no extra draw call
+  const l = Math.round(v.color_l * 100 * (1.0 - org.damage * 0.5));
+  const baseColor = `hsl(${v.color_h}, ${Math.round(v.color_s * 100)}%, ${l}%)`;
 
   ctx.save();
   ctx.translate(p.x, p.y);
 
-  // Draw shape
+  // Shape — single fill+stroke (no pattern overlay for perf)
   ctx.fillStyle = baseColor;
-  ctx.strokeStyle = "rgba(0,0,0,0.5)";
-  ctx.lineWidth = isSelected ? 2.5 : 1.5;
+  ctx.strokeStyle = isSelected ? "rgba(255,230,80,0.9)" : "rgba(0,0,0,0.4)";
+  ctx.lineWidth = isSelected ? 2.5 : 1.2;
   _drawShape(ctx, v.shape, r);
   ctx.fill(); ctx.stroke();
 
-  // Damage tint overlay
-  if (org.damage > 0.1) {
-    ctx.fillStyle = `rgba(220, 60, 40, ${dmgAlpha})`;
-    _drawShape(ctx, v.shape, r);
-    ctx.fill();
-  }
-
-  // Pattern overlay
-  _drawPattern(ctx, v.pattern, v.color_h, r);
-
-  // Heading arrow
-  const arrowLen = r * 1.6;
-  ctx.strokeStyle = "rgba(0,0,0,0.6)";
+  // Heading arrow — simple line only
+  const arrowLen = r * 1.5;
+  ctx.strokeStyle = "rgba(0,0,0,0.55)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(0, 0);
   ctx.lineTo(Math.cos(org.heading) * arrowLen, -Math.sin(org.heading) * arrowLen);
   ctx.stroke();
 
-  // Health arc above body
-  const arcR = r + 4;
-  ctx.strokeStyle = `hsl(${120 * org.energy}, 70%, 45%)`;
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(0, 0, arcR, -Math.PI * 0.7, -Math.PI * 0.7 + Math.PI * 1.4 * org.energy);
-  ctx.stroke();
+  // Health bar — thin flat bar instead of arc (cheaper)
+  const barW = r * 2;
+  const barH = 3;
+  const barY = -r - 6;
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(-barW / 2, barY, barW, barH);
+  ctx.fillStyle = `hsl(${Math.round(120 * org.energy)}, 70%, 45%)`;
+  ctx.fillRect(-barW / 2, barY, barW * org.energy, barH);
 
-  // Generation badge
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
-  ctx.font = `bold ${Math.max(7, r * 0.5)}px monospace`;
-  ctx.textAlign = "center";
-  ctx.fillText(`g${org.generation}`, 0, r + 10);
+  // Gen label (only for selected or gen>0)
+  if (isSelected || org.generation > 0) {
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = `bold ${Math.max(7, r * 0.5)}px monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText(`g${org.generation}`, 0, r + 9);
+  }
 
   // Mate-ready pulsing ring
   if (org.mate_ready) {

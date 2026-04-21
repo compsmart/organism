@@ -287,6 +287,7 @@ class EvolutionSimulation:
         self.seed = seed
         self.rng = np.random.default_rng(seed)
         self._uid_counter = 0
+        self._model_cache: dict[int, RecurrentActorCritic] = {}  # uid → cached model
 
         # Shared world
         self.food_positions = np.zeros((self.env_config.num_food_sources, 2), dtype=np.float32)
@@ -396,6 +397,7 @@ class EvolutionSimulation:
             self.config.population_size = population_size
         self.rng = np.random.default_rng(self.seed)
         self._uid_counter = 0
+        self._model_cache.clear()
         self.organisms = []
         self.eggs = []
         self.tick = 0
@@ -532,7 +534,8 @@ class EvolutionSimulation:
             if org.energy <= 0.0 or org.damage >= 1.0:
                 dead_indices.append(i)
         for i in reversed(dead_indices):
-            self.organisms.pop(i)
+            org = self.organisms.pop(i)
+            self._evict_model(org.uid)
             self.total_died += 1
 
         # Egg hatching
@@ -581,16 +584,22 @@ class EvolutionSimulation:
         return int(dist.sample().item())
 
     def _get_model(self, org: OrganismState) -> RecurrentActorCritic:
-        """Build a RecurrentActorCritic from the organism's stored state_dict."""
-        model = RecurrentActorCritic(
-            observation_size=OBSERVATION_SIZE,
-            action_size=len(Action),
-            hidden_size=_HIDDEN_SIZE,
-            use_global_workspace=True,
-        )
-        model.load_state_dict(org.model_sd, strict=False)
-        model.eval()
-        return model
+        """Return a cached RecurrentActorCritic for this organism, building once."""
+        if org.uid not in self._model_cache:
+            model = RecurrentActorCritic(
+                observation_size=OBSERVATION_SIZE,
+                action_size=len(Action),
+                hidden_size=_HIDDEN_SIZE,
+                use_global_workspace=True,
+            )
+            model.load_state_dict(org.model_sd, strict=False)
+            model.eval()
+            self._model_cache[org.uid] = model
+        return self._model_cache[org.uid]
+
+    def _evict_model(self, uid: int) -> None:
+        """Remove a model from the cache when an organism dies or is removed."""
+        self._model_cache.pop(uid, None)
 
     def _apply_action(self, org: OrganismState, action: int) -> None:
         p = org.physical
@@ -714,6 +723,8 @@ class EvolutionSimulation:
                     break
 
         # Remove mated organisms
+        for uid in paired:
+            self._evict_model(uid)
         self.organisms = [o for o in self.organisms if o.uid not in paired]
         self.total_died += len(paired)  # they "die" to produce offspring
 
