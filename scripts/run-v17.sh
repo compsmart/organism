@@ -12,4 +12,5 @@ python3 -u -m organism \
   --learning-rate 0.0015 \
   --entropy-coef 0.03 \
   --no-sleep \
-  --no-reflex
+  --no-reflex \
+  --warm-start outputs/organism-v16/model_best.pt

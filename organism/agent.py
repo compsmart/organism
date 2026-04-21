@@ -548,7 +548,10 @@ class OrganismLearner:
                 dist = Categorical(logits=logits)
                 raw_action_tensor = torch.argmax(logits, dim=-1) if deterministic else dist.sample()
                 raw_action = int(raw_action_tensor.item())
-                action, reflex_override = self.reflex.override(observation, raw_action)
+                if self.agent_config.use_reflex:
+                    action, reflex_override = self.reflex.override(observation, raw_action)
+                else:
+                    action, reflex_override = raw_action, False
                 executed_action_tensor = torch.tensor([action], dtype=torch.int64, device=self.device)
                 log_prob = dist.log_prob(executed_action_tensor)
                 entropy = dist.entropy()
@@ -557,7 +560,10 @@ class OrganismLearner:
             dist = Categorical(logits=logits)
             raw_action_tensor = dist.sample()
             raw_action = int(raw_action_tensor.item())
-            action, reflex_override = self.reflex.override(observation, raw_action)
+            if self.agent_config.use_reflex:
+                action, reflex_override = self.reflex.override(observation, raw_action)
+            else:
+                action, reflex_override = raw_action, False
             executed_action_tensor = torch.tensor([action], dtype=torch.int64, device=self.device)
             log_prob = dist.log_prob(executed_action_tensor)
             entropy = dist.entropy()

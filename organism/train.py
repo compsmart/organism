@@ -109,6 +109,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Randomize food/hazard value multipliers (0.5x-2.3x).",
     )
+    parser.add_argument(
+        "--warm-start",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Load weights from this checkpoint before training (fine-tune).",
+    )
     return parser.parse_args()
 
 
@@ -256,6 +263,9 @@ def main() -> None:
         training_config=config.train,
         seed=config.train.seed,
     )
+    if args.warm_start:
+        learner.load(args.warm_start)
+        print(f"Warm-started from {args.warm_start}")
 
     best_eval_return = float("-inf")
     best_eval_episode = 0
