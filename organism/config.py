@@ -21,7 +21,7 @@ class EnvironmentConfig:
     turn_energy_cost: float = 0.004
     food_energy_gain: float = 0.5
     hazard_radius: float = 0.1
-    hazard_damage: float = 0.11
+    hazard_damage: float = 0.22
     rest_recovery: float = 0.08
     passive_healing: float = 0.012
     novelty_grid_size: int = 8

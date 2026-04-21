@@ -229,7 +229,9 @@ class OrganismEnv:
             curr_food_dist = self._nearest_food_distance()
             if self.prev_nearest_food_distance > 0.0 and curr_food_dist > 0.0:
                 delta = self.prev_nearest_food_distance - curr_food_dist
-                reward += self.config.food_approach_scale * float(delta)
+                # Scale approach reward by hunger so agent doesn't chase food when full
+                hunger = max(0.0, 1.0 - self.energy / 0.75)
+                reward += self.config.food_approach_scale * hunger * float(delta)
             self.prev_nearest_food_distance = curr_food_dist
 
         done = False
