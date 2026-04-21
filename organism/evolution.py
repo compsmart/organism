@@ -704,7 +704,8 @@ class EvolutionSimulation:
         self.total_born += 1
 
     def _emergency_spawn(self) -> None:
-        """Spawn a mutated copy of the fittest surviving organism to prevent extinction."""
+        """Spawn a survival clone of the fittest organism to prevent extinction.
+        Does NOT increment generation — this is not evolution, just keeping numbers up."""
         if not self.organisms:
             self._spawn_initial_population()
             return
@@ -715,7 +716,7 @@ class EvolutionSimulation:
         org = self._make_organism(
             uid=self._next_uid(),
             lineage=best.lineage,
-            generation=best.generation + 1,
+            generation=best.generation,  # same generation — not a true offspring
             sd=child_sd,
             physical=child_phys,
             visual=child_vis,
