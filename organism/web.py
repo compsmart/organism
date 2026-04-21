@@ -116,6 +116,15 @@ class EvoStepRequest(BaseModel):
     steps: int = 5
 
 
+class EvoSaveRequest(BaseModel):
+    uid: int
+    note: str = ""
+
+
+class EvoSpawnRequest(BaseModel):
+    key: str
+
+
 class EvolutionSessionManager:
     def __init__(self, outputs_root: Path) -> None:
         self.outputs_root = outputs_root
@@ -172,10 +181,6 @@ def create_app() -> FastAPI:
         from .evolution import EvolutionSimulation
         return EvolutionSimulation.list_saved()
 
-    class EvoSaveRequest(BaseModel):
-        uid: int
-        note: str = ""
-
     @app.post("/api/evolution/save")
     def evo_save(payload: EvoSaveRequest) -> dict[str, Any]:
         with evo_manager.lock:
@@ -184,9 +189,6 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=404, detail="Organism not found.")
             key = evo_manager.simulation.save_organism(org, note=payload.note)
             return {"key": key}
-
-    class EvoSpawnRequest(BaseModel):
-        key: str
 
     @app.post("/api/evolution/spawn")
     def evo_spawn(payload: EvoSpawnRequest) -> dict[str, Any]:
