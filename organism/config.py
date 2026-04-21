@@ -36,6 +36,12 @@ class EnvironmentConfig:
     edge_threshold: float = 0.1
     food_approach_scale: float = 0.0
     variety: bool = False
+    food_quantity_min: float = 2.0
+    food_quantity_max: float = 6.0
+    eat_rate: float = 0.5
+    hazard_radius_min: float = 0.06
+    hazard_radius_max: float = 0.18
+    hazard_speed: float = 0.003
 
 
 @dataclass

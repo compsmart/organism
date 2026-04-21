@@ -211,6 +211,8 @@ def _compute_observation(
     food_positions: np.ndarray,
     food_cooldowns: np.ndarray,
     food_values: np.ndarray,
+    food_quantities: np.ndarray,
+    food_quantity_max: float,
     hazard_positions: np.ndarray,
     hazard_values: np.ndarray,
     shelter_position: np.ndarray,
@@ -222,10 +224,12 @@ def _compute_observation(
     available_mask = food_cooldowns == 0
     available_food = food_positions[available_mask]
     available_food_values = food_values[available_mask]
+    qty_fraction = np.clip(food_quantities[available_mask] / max(food_quantity_max, 1.0), 0.0, 1.0)
+    food_sensor_weights = available_food_values * qty_fraction
 
     food_sensors = _sector_response(
         org.position, org.heading, sector_offsets, available_food,
-        p.food_visible_range, available_food_values,
+        p.food_visible_range, food_sensor_weights,
     )
     hazard_sensors = _sector_response(
         org.position, org.heading, sector_offsets, hazard_positions,
@@ -288,8 +292,12 @@ class EvolutionSimulation:
         self.food_positions = np.zeros((self.env_config.num_food_sources, 2), dtype=np.float32)
         self.food_cooldowns = np.zeros(self.env_config.num_food_sources, dtype=np.int32)
         self.food_values = np.ones(self.env_config.num_food_sources, dtype=np.float32)
+        self.food_quantities = np.ones(self.env_config.num_food_sources, dtype=np.float32)
+        self.food_max_quantities = np.ones(self.env_config.num_food_sources, dtype=np.float32)
         self.hazard_positions = np.zeros((self.env_config.num_hazards, 2), dtype=np.float32)
         self.hazard_values = np.ones(self.env_config.num_hazards, dtype=np.float32)
+        self.hazard_radii = np.full(self.env_config.num_hazards, self.env_config.hazard_radius, dtype=np.float32)
+        self.hazard_velocities = np.zeros((self.env_config.num_hazards, 2), dtype=np.float32)
         self.shelter_position = np.array([0.5, 0.5], dtype=np.float32)
 
         # Population
@@ -318,12 +326,17 @@ class EvolutionSimulation:
         alive = self.organisms
         eggs = self.eggs
         available = [
-            ([float(p[0]), float(p[1])], float(v))
-            for p, c, v in zip(self.food_positions, self.food_cooldowns, self.food_values)
+            ([float(p[0]), float(p[1])], float(v), float(q), float(mq))
+            for p, c, v, q, mq in zip(
+                self.food_positions, self.food_cooldowns, self.food_values,
+                self.food_quantities, self.food_max_quantities,
+            )
             if c == 0 and np.all(p >= 0.0)
         ]
         food_pos = [a[0] for a in available]
         food_vals = [a[1] for a in available]
+        food_qtys = [a[2] for a in available]
+        food_max_qtys = [a[3] for a in available]
 
         dominant = self._dominant_lineage()
         max_gen = max((o.generation for o in alive), default=0)
@@ -358,8 +371,11 @@ class EvolutionSimulation:
                 "shelter_radius": float(self.env_config.shelter_radius),
                 "food": food_pos,
                 "food_values": food_vals,
+                "food_quantities": food_qtys,
+                "food_max_quantities": food_max_qtys,
                 "hazards": [[float(p[0]), float(p[1])] for p in self.hazard_positions],
                 "hazard_values": [float(v) for v in self.hazard_values],
+                "hazard_radii": [float(r) for r in self.hazard_radii],
                 "hazard_radius": float(self.env_config.hazard_radius),
                 "eat_radius": float(self.env_config.eat_radius),
             },
@@ -404,9 +420,20 @@ class EvolutionSimulation:
         for i in range(self.env_config.num_food_sources):
             self.food_positions[i] = self._spawn_point(0.15, ws)
             self.food_values[i] = self._sample_value()
+            qty = float(self.rng.uniform(self.env_config.food_quantity_min, self.env_config.food_quantity_max))
+            self.food_quantities[i] = qty
+            self.food_max_quantities[i] = qty
         for i in range(self.env_config.num_hazards):
             self.hazard_positions[i] = self._spawn_point(0.18, ws)
             self.hazard_values[i] = self._sample_value()
+            self.hazard_radii[i] = float(self.rng.uniform(
+                self.env_config.hazard_radius_min, self.env_config.hazard_radius_max
+            ))
+            angle = float(self.rng.uniform(-math.pi, math.pi))
+            self.hazard_velocities[i] = np.array(
+                [math.cos(angle) * self.env_config.hazard_speed,
+                 math.sin(angle) * self.env_config.hazard_speed], dtype=np.float32
+            )
         self.food_cooldowns.fill(0)
 
     def _spawn_initial_population(self) -> None:
@@ -460,6 +487,7 @@ class EvolutionSimulation:
     def _step_once(self) -> None:
         self.tick += 1
         self._tick_food_respawns()
+        self._tick_hazards()
 
         # Randomise step order to prevent positional food-eating bias
         order = list(range(len(self.organisms)))
@@ -473,6 +501,7 @@ class EvolutionSimulation:
             obs = _compute_observation(
                 org,
                 self.food_positions, self.food_cooldowns, self.food_values,
+                self.food_quantities, self.env_config.food_quantity_max,
                 self.hazard_positions, self.hazard_values,
                 self.shelter_position, self.env_config.world_size,
             )
@@ -589,12 +618,15 @@ class EvolutionSimulation:
         elif chosen == Action.EAT:
             org.energy -= 0.002
             idx = self._nearest_food_within(org.position, p.eat_radius)
-            if idx is not None:
+            if idx is not None and self.food_cooldowns[idx] == 0:
+                amount = min(self.env_config.eat_rate, float(self.food_quantities[idx]))
                 food_val = float(self.food_values[idx])
-                org.energy += self.env_config.food_energy_gain * food_val
-                org.food_eaten += 1
-                self.food_cooldowns[idx] = self.env_config.food_respawn_steps
-                self.food_positions[idx] = np.array([-1.0, -1.0], dtype=np.float32)
+                self.food_quantities[idx] -= amount
+                org.energy += self.env_config.food_energy_gain * amount * food_val
+                org.food_eaten += amount
+                if self.food_quantities[idx] <= 0.0:
+                    self.food_cooldowns[idx] = self.env_config.food_respawn_steps
+                    self.food_positions[idx] = np.array([-1.0, -1.0], dtype=np.float32)
             org.fatigue += 0.004
         elif chosen == Action.REST:
             shelter_dist = float(np.linalg.norm(org.position - self.shelter_position))
@@ -614,9 +646,10 @@ class EvolutionSimulation:
 
     def _apply_hazard_damage(self, org: OrganismState) -> None:
         for i, hazard in enumerate(self.hazard_positions):
+            radius = float(self.hazard_radii[i])
             dist = float(np.linalg.norm(org.position - hazard))
-            if dist <= self.env_config.hazard_radius:
-                severity = 1.0 - (dist / self.env_config.hazard_radius)
+            if dist <= radius:
+                severity = 1.0 - (dist / radius)
                 strength = float(self.hazard_values[i])
                 org.damage += self.env_config.hazard_damage * (0.45 + 0.55 * severity) * strength
                 org.energy -= 0.01 * severity * strength
@@ -733,6 +766,35 @@ class EvolutionSimulation:
             if self.food_cooldowns[i] == 0:
                 self.food_positions[i] = self._spawn_point(0.15, ws)
                 self.food_values[i] = self._sample_value()
+                qty = float(self.rng.uniform(self.env_config.food_quantity_min, self.env_config.food_quantity_max))
+                self.food_quantities[i] = qty
+                self.food_max_quantities[i] = qty
+
+    def _tick_hazards(self) -> None:
+        ws = self.env_config.world_size
+        for i in range(self.env_config.num_hazards):
+            pos = self.hazard_positions[i].copy()
+            vel = self.hazard_velocities[i].copy()
+            r = float(self.hazard_radii[i])
+            new_pos = pos + vel
+            for axis in range(2):
+                if new_pos[axis] - r < 0.0:
+                    new_pos[axis] = r
+                    vel[axis] = abs(vel[axis])
+                elif new_pos[axis] + r > ws:
+                    new_pos[axis] = ws - r
+                    vel[axis] = -abs(vel[axis])
+            to_shelter = new_pos - self.shelter_position
+            dist_to_shelter = float(np.linalg.norm(to_shelter))
+            min_dist = self.env_config.shelter_radius + r + 0.02
+            if dist_to_shelter < min_dist:
+                away = to_shelter / max(dist_to_shelter, 1e-6)
+                new_pos = self.shelter_position + away.astype(np.float32) * min_dist
+                dot = float(np.dot(vel, away))
+                if dot < 0.0:
+                    vel = vel - (2.0 * dot * away).astype(np.float32)
+            self.hazard_positions[i] = new_pos
+            self.hazard_velocities[i] = vel
 
     def _nearest_ready_mate_dist(self, org: OrganismState) -> float:
         """Return distance to nearest other ready-to-mate organism, or 0 if none."""

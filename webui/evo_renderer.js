@@ -42,15 +42,20 @@ function drawShelter(ctx, world, scene) {
 
 function drawFood(ctx, world, scene) {
   const values = world.food_values || [];
+  const quantities = world.food_quantities || [];
+  const maxQtys = world.food_max_quantities || [];
   world.food.forEach((pos, i) => {
     const p = worldToCanvas(pos, scene);
     const v = values[i] ?? 1.0;
-    const r = Math.max(4, world.eat_radius * scene.size * 0.8 * Math.sqrt(v));
+    const qty = quantities[i] ?? 1.0;
+    const maxQty = maxQtys[i] ?? qty;
+    const fraction = Math.max(0.12, qty / Math.max(maxQty, 0.01));
+    const r = Math.max(3, world.eat_radius * scene.size * 0.9 * Math.sqrt(fraction) * Math.sqrt(v));
     ctx.fillStyle = v >= 2.0 ? "#3c9048" : v >= 1.4 ? "#56a756" : v >= 0.8 ? "#82b96c" : "#b8cc8c";
     ctx.strokeStyle = "#2e6b2e"; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    if (v >= 2.0) {
-      ctx.fillStyle = "#ffe88a"; ctx.font = `700 ${Math.max(8, r * 0.9)}px Georgia`;
+    if (v >= 2.0 && fraction > 0.3) {
+      ctx.fillStyle = "#ffe88a"; ctx.font = `700 ${Math.max(7, r * 0.9)}px Georgia`;
       ctx.textAlign = "center"; ctx.fillText("★", p.x, p.y + r * 0.35);
     }
   });
@@ -58,10 +63,12 @@ function drawFood(ctx, world, scene) {
 
 function drawHazards(ctx, world, scene) {
   const values = world.hazard_values || [];
+  const radii = world.hazard_radii || [];
   world.hazards.forEach((pos, i) => {
     const p = worldToCanvas(pos, scene);
     const v = values[i] ?? 1.0;
-    const r = world.hazard_radius * scene.size * Math.sqrt(v);
+    const hazardRadius = radii[i] ?? world.hazard_radius;
+    const r = hazardRadius * scene.size * Math.sqrt(v);
     ctx.fillStyle = `rgba(204, 110, 88, ${Math.min(0.85, 0.3 + v * 0.25)})`;
     ctx.strokeStyle = v >= 2.0 ? "#5b0e05" : v >= 1.4 ? "#7a1b10" : "#913a2e";
     ctx.lineWidth = 1.5 + (v >= 1.4 ? 1 : 0);

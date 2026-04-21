@@ -84,11 +84,16 @@ function drawShelter(ctx, world, scene) {
 
 function drawFood(ctx, world, scene) {
   const values = world.food_values || [];
+  const quantities = world.food_quantities || [];
+  const maxQtys = world.food_max_quantities || [];
   world.food.forEach((food, i) => {
     const point = worldToCanvas(food, scene);
     const value = values[i] ?? 1.0;
-    const baseRadius = Math.max(5, world.eat_radius * scene.size * 0.8);
-    const radius = baseRadius * Math.sqrt(value);
+    const qty = quantities[i] ?? 1.0;
+    const maxQty = maxQtys[i] ?? qty;
+    const fraction = Math.max(0.12, qty / Math.max(maxQty, 0.01));
+    const baseRadius = Math.max(4, world.eat_radius * scene.size * 0.9);
+    const radius = baseRadius * Math.sqrt(fraction) * Math.sqrt(value);
     ctx.fillStyle = value >= 2.0 ? "#3c9048" : value >= 1.4 ? "#56a756" : value >= 0.8 ? "#82b96c" : "#b8cc8c";
     ctx.strokeStyle = "#2e6b2e";
     ctx.lineWidth = 2;
@@ -96,9 +101,9 @@ function drawFood(ctx, world, scene) {
     ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    if (value >= 2.0) {
+    if (value >= 2.0 && fraction > 0.3) {
       ctx.fillStyle = "#ffe88a";
-      ctx.font = `700 ${Math.max(9, radius * 0.9)}px Georgia`;
+      ctx.font = `700 ${Math.max(8, radius * 0.9)}px Georgia`;
       ctx.textAlign = "center";
       ctx.fillText("★", point.x, point.y + radius * 0.35);
     }
@@ -107,10 +112,12 @@ function drawFood(ctx, world, scene) {
 
 function drawHazards(ctx, world, scene) {
   const values = world.hazard_values || [];
+  const radii = world.hazard_radii || [];
   world.hazards.forEach((hazard, i) => {
     const point = worldToCanvas(hazard, scene);
     const value = values[i] ?? 1.0;
-    const radius = world.hazard_radius * scene.size * Math.sqrt(value);
+    const hazardRadius = radii[i] ?? world.hazard_radius;
+    const radius = hazardRadius * scene.size * Math.sqrt(value);
     const alpha = Math.min(0.85, 0.3 + value * 0.25);
     ctx.fillStyle = `rgba(204, 110, 88, ${alpha})`;
     ctx.strokeStyle = value >= 2.0 ? "#5b0e05" : value >= 1.4 ? "#7a1b10" : "#913a2e";

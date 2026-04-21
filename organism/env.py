@@ -91,8 +91,12 @@ class OrganismEnv:
         self.food_positions = np.zeros((self.config.num_food_sources, 2), dtype=np.float32)
         self.food_cooldowns = np.zeros(self.config.num_food_sources, dtype=np.int32)
         self.food_values = np.ones(self.config.num_food_sources, dtype=np.float32)
+        self.food_quantities = np.ones(self.config.num_food_sources, dtype=np.float32)
+        self.food_max_quantities = np.ones(self.config.num_food_sources, dtype=np.float32)
         self.hazard_positions = np.zeros((self.config.num_hazards, 2), dtype=np.float32)
         self.hazard_values = np.ones(self.config.num_hazards, dtype=np.float32)
+        self.hazard_radii = np.full(self.config.num_hazards, self.config.hazard_radius, dtype=np.float32)
+        self.hazard_velocities = np.zeros((self.config.num_hazards, 2), dtype=np.float32)
         self.shelter_position = np.zeros(2, dtype=np.float32)
         self.agent_position = np.zeros(2, dtype=np.float32)
         self.heading = 0.0
@@ -142,8 +146,19 @@ class OrganismEnv:
 
         for index in range(self.config.num_food_sources):
             self.food_values[index] = self._sample_food_value()
+            qty = float(self.rng.uniform(self.config.food_quantity_min, self.config.food_quantity_max))
+            self.food_quantities[index] = qty
+            self.food_max_quantities[index] = qty
         for index in range(self.config.num_hazards):
             self.hazard_values[index] = self._sample_hazard_value()
+            self.hazard_radii[index] = float(self.rng.uniform(
+                self.config.hazard_radius_min, self.config.hazard_radius_max
+            ))
+            angle = float(self.rng.uniform(-np.pi, np.pi))
+            self.hazard_velocities[index] = np.array(
+                [np.cos(angle) * self.config.hazard_speed,
+                 np.sin(angle) * self.config.hazard_speed], dtype=np.float32
+            )
 
         self.previous_discomfort = self._discomfort()
         self._mark_visited()
@@ -157,6 +172,7 @@ class OrganismEnv:
         collision = False
 
         self._tick_food_respawns()
+        self._tick_hazards()
         self.episode_steps += 1
 
         if chosen_action == Action.TURN_LEFT:
@@ -181,11 +197,14 @@ class OrganismEnv:
             edible_index = self._nearest_food_within(self.config.eat_radius)
             self.energy -= 0.002
             if edible_index is not None and self.food_cooldowns[edible_index] == 0:
+                amount = min(self.config.eat_rate, float(self.food_quantities[edible_index]))
                 ate_food_value = float(self.food_values[edible_index])
-                self.energy += self.config.food_energy_gain * ate_food_value
-                self.food_cooldowns[edible_index] = self.config.food_respawn_steps
-                self.food_positions[edible_index] = np.array([-1.0, -1.0], dtype=np.float32)
+                self.food_quantities[edible_index] -= amount
+                self.energy += self.config.food_energy_gain * amount * ate_food_value
                 ate_food = True
+                if self.food_quantities[edible_index] <= 0.0:
+                    self.food_cooldowns[edible_index] = self.config.food_respawn_steps
+                    self.food_positions[edible_index] = np.array([-1.0, -1.0], dtype=np.float32)
             self.fatigue += 0.004
         elif chosen_action == Action.REST:
             shelter_distance = np.linalg.norm(self.agent_position - self.shelter_position)
@@ -211,7 +230,7 @@ class OrganismEnv:
         discomfort = self._discomfort()
         reward = (previous_discomfort - discomfort) + novelty_bonus
         if ate_food:
-            reward += 0.2 * ate_food_value
+            reward += 0.2 * ate_food_value * amount
         if collision:
             reward -= 0.05
         if hazard_contacts:
@@ -296,10 +315,16 @@ class OrganismEnv:
         available_mask = self.food_cooldowns == 0
         available_food = self.food_positions[available_mask]
         available_food_values = self.food_values[available_mask]
+        # Weight sensor by remaining quantity so organisms sense pile size
+        qty_fraction = np.clip(
+            self.food_quantities[available_mask] / max(self.config.food_quantity_max, 1.0),
+            0.0, 1.0
+        )
+        food_sensor_weights = available_food_values * qty_fraction
         food_sensors = self._sector_response(
             available_food,
             detection_range=self.config.food_visible_range,
-            weights=available_food_values,
+            weights=food_sensor_weights,
         )
         hazard_sensors = self._sector_response(
             self.hazard_positions, weights=self.hazard_values
@@ -356,6 +381,36 @@ class OrganismEnv:
                 else:
                     self.food_positions[index] = self._spawn_point(min_distance=0.15)
                 self.food_values[index] = self._sample_food_value()
+                qty = float(self.rng.uniform(self.config.food_quantity_min, self.config.food_quantity_max))
+                self.food_quantities[index] = qty
+                self.food_max_quantities[index] = qty
+
+    def _tick_hazards(self) -> None:
+        ws = self.config.world_size
+        for i in range(self.config.num_hazards):
+            pos = self.hazard_positions[i].copy()
+            vel = self.hazard_velocities[i].copy()
+            r = float(self.hazard_radii[i])
+            new_pos = pos + vel
+            for axis in range(2):
+                if new_pos[axis] - r < 0.0:
+                    new_pos[axis] = r
+                    vel[axis] = abs(vel[axis])
+                elif new_pos[axis] + r > ws:
+                    new_pos[axis] = ws - r
+                    vel[axis] = -abs(vel[axis])
+            # Shelter exclusion
+            to_shelter = new_pos - self.shelter_position
+            dist_to_shelter = float(np.linalg.norm(to_shelter))
+            min_dist = self.config.shelter_radius + r + 0.02
+            if dist_to_shelter < min_dist:
+                away = to_shelter / max(dist_to_shelter, 1e-6)
+                new_pos = self.shelter_position + away.astype(np.float32) * min_dist
+                dot = float(np.dot(vel, away))
+                if dot < 0.0:
+                    vel = vel - (2.0 * dot * away).astype(np.float32)
+            self.hazard_positions[i] = new_pos
+            self.hazard_velocities[i] = vel
 
     def _sample_food_value(self) -> float:
         if not self.config.variety:
@@ -374,10 +429,11 @@ class OrganismEnv:
     def _apply_hazard_damage(self) -> int:
         contacts = 0
         for i, hazard in enumerate(self.hazard_positions):
+            radius = float(self.hazard_radii[i])
             distance = float(np.linalg.norm(self.agent_position - hazard))
-            if distance <= self.config.hazard_radius:
+            if distance <= radius:
                 contacts += 1
-                severity = 1.0 - (distance / self.config.hazard_radius)
+                severity = 1.0 - (distance / radius)
                 strength = float(self.hazard_values[i])
                 self.damage += self.config.hazard_damage * (0.45 + 0.55 * severity) * strength
                 self.energy -= 0.01 * severity * strength

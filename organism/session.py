@@ -162,12 +162,17 @@ class SimulationSession:
         env = self.env
         observation = self.observation
         available_food_items = [
-            (point, float(value))
-            for point, cooldown, value in zip(env.food_positions, env.food_cooldowns, env.food_values)
+            (point, float(value), float(qty), float(max_qty))
+            for point, cooldown, value, qty, max_qty in zip(
+                env.food_positions, env.food_cooldowns, env.food_values,
+                env.food_quantities, env.food_max_quantities,
+            )
             if cooldown == 0 and np.all(point >= 0.0)
         ]
-        available_food = [_point_to_list(p) for p, _ in available_food_items]
-        available_food_values = [v for _, v in available_food_items]
+        available_food = [_point_to_list(p) for p, *_ in available_food_items]
+        available_food_values = [v for _, v, *_ in available_food_items]
+        available_food_quantities = [q for _, _, q, _ in available_food_items]
+        available_food_max_quantities = [m for _, _, _, m in available_food_items]
         hazard_values = [float(v) for v in env.hazard_values]
 
         return {
@@ -204,8 +209,11 @@ class SimulationSession:
                 "shelter": _point_to_list(env.shelter_position),
                 "food": available_food,
                 "food_values": available_food_values,
+                "food_quantities": available_food_quantities,
+                "food_max_quantities": available_food_max_quantities,
                 "hazards": [_point_to_list(point) for point in env.hazard_positions],
                 "hazard_values": hazard_values,
+                "hazard_radii": [float(r) for r in env.hazard_radii],
                 "trail": [_point_to_list(point) for point in self.position_history[-160:]],
                 "visitation": env.visitation.astype(int).tolist(),
                 "sector_offsets": [float(offset) for offset in env.sector_offsets],
