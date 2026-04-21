@@ -167,6 +167,35 @@ def create_app() -> FastAPI:
     def evo_step(payload: EvoStepRequest) -> dict[str, Any]:
         return evo_manager.step(max(1, min(payload.steps, 100)))
 
+    @app.get("/api/evolution/saved")
+    def evo_saved() -> list[dict[str, Any]]:
+        from .evolution import EvolutionSimulation
+        return EvolutionSimulation.list_saved()
+
+    class EvoSaveRequest(BaseModel):
+        uid: int
+        note: str = ""
+
+    @app.post("/api/evolution/save")
+    def evo_save(payload: EvoSaveRequest) -> dict[str, Any]:
+        with evo_manager.lock:
+            org = next((o for o in evo_manager.simulation.organisms if o.uid == payload.uid), None)
+            if org is None:
+                raise HTTPException(status_code=404, detail="Organism not found.")
+            key = evo_manager.simulation.save_organism(org, note=payload.note)
+            return {"key": key}
+
+    class EvoSpawnRequest(BaseModel):
+        key: str
+
+    @app.post("/api/evolution/spawn")
+    def evo_spawn(payload: EvoSpawnRequest) -> dict[str, Any]:
+        with evo_manager.lock:
+            ok = evo_manager.simulation.spawn_saved(payload.key)
+            if not ok:
+                raise HTTPException(status_code=404, detail="Saved organism not found.")
+            return evo_manager.simulation.state_dict()
+
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}

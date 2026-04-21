@@ -124,6 +124,18 @@ function drawOrganism(ctx, org, scene, isSelected) {
   ctx.textAlign = "center";
   ctx.fillText(`g${org.generation}`, 0, r + 10);
 
+  // Mate-ready pulsing ring
+  if (org.mate_ready) {
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 400 + org.uid);
+    ctx.strokeStyle = `rgba(255, 140, 200, ${0.5 + 0.5 * pulse})`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 5 + pulse * 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   // Selection ring + sensor circles
   if (isSelected) {
     ctx.strokeStyle = "rgba(255, 230, 80, 0.9)"; ctx.lineWidth = 2.5;

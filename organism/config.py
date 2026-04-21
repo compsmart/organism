@@ -68,13 +68,14 @@ class EvolutionConfig:
     mate_energy_min: float = 0.55
     mate_damage_max: float = 0.35
     mate_fatigue_max: float = 0.65
-    mate_food_min: int = 2
+    mate_food_min: int = 5
     mate_radius: float = 0.08
     hatch_countdown: int = 40
     mutation_sigma: float = 0.015
     trait_mutation_scale: float = 1.0
     initial_diversity_sigma: float = 0.01
     seed_checkpoint: str = ""
+    mate_approach_scale: float = 0.04
 
 
 @dataclass

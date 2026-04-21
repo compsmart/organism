@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import math
 import random
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -67,9 +69,19 @@ class OrganismState:
     last_visit_cell: tuple | None
     last_action: str
 
-    def to_json(self) -> dict[str, Any]:
+    def is_mate_ready(self, cfg: "EvolutionConfig") -> bool:
+        return (
+            self.age >= cfg.min_mate_age
+            and self.food_eaten >= cfg.mate_food_min
+            and self.energy >= cfg.mate_energy_min
+            and self.damage <= cfg.mate_damage_max
+            and self.fatigue <= cfg.mate_fatigue_max
+        )
+
+    def to_json(self, cfg: "EvolutionConfig | None" = None) -> dict[str, Any]:
         p = self.physical
         v = self.visual
+        mate_ready = self.is_mate_ready(cfg) if cfg is not None else False
         return {
             "uid": self.uid,
             "lineage": self.lineage,
@@ -82,6 +94,7 @@ class OrganismState:
             "age": self.age,
             "food_eaten": self.food_eaten,
             "last_action": self.last_action,
+            "mate_ready": mate_ready,
             "physical": {
                 "sensor_range": p.sensor_range,
                 "food_visible_range": p.food_visible_range,
@@ -350,9 +363,14 @@ class EvolutionSimulation:
                 "hazard_radius": float(self.env_config.hazard_radius),
                 "eat_radius": float(self.env_config.eat_radius),
             },
-            "organisms": [o.to_json() for o in alive],
+            "organisms": [o.to_json(self.config) for o in alive],
             "eggs": [e.to_json() for e in eggs],
             "trait_stats": trait_stats,
+            "mate_conditions": {
+                "min_age": self.config.min_mate_age,
+                "min_food": self.config.mate_food_min,
+                "min_energy": self.config.mate_energy_min,
+            },
         }
 
     def reset(self, seed: int | None = None, population_size: int | None = None) -> None:
@@ -459,9 +477,21 @@ class EvolutionSimulation:
                 self.shelter_position, self.env_config.world_size,
             )
             org.observation = obs
+            # Record distance to nearest ready mate before moving (for shaping)
+            prev_mate_dist = self._nearest_ready_mate_dist(org) if self.config.mate_approach_scale > 0.0 else None
             action = self._policy_step(org, obs)
             org.last_action = list(Action.__members__.keys())[action].lower()
             self._apply_action(org, action)
+            # Mate-approach shaping: reward getting closer to a potential mate when ready
+            if prev_mate_dist is not None and org.is_mate_ready(self.config):
+                curr_mate_dist = self._nearest_ready_mate_dist(org)
+                if prev_mate_dist > 0.0 and curr_mate_dist > 0.0:
+                    delta = prev_mate_dist - curr_mate_dist
+                    # Small positive energy bonus (non-damaging encouragement)
+                    org.energy = float(np.clip(
+                        org.energy + self.config.mate_approach_scale * 0.01 * delta,
+                        0.0, 1.0
+                    ))
 
         # Hazard damage
         for org in self.organisms:
@@ -642,6 +672,12 @@ class EvolutionSimulation:
                     paired.add(a.uid)
                     paired.add(b.uid)
                     self.mating_events += 1
+                    # Auto-save both parents on successful mating
+                    try:
+                        self.save_organism(a, note=f"mated@tick{self.tick}")
+                        self.save_organism(b, note=f"mated@tick{self.tick}")
+                    except Exception:
+                        pass
                     break
 
         # Remove mated organisms
@@ -697,6 +733,19 @@ class EvolutionSimulation:
                 self.food_positions[i] = self._spawn_point(0.15, ws)
                 self.food_values[i] = self._sample_value()
 
+    def _nearest_ready_mate_dist(self, org: OrganismState) -> float:
+        """Return distance to nearest other ready-to-mate organism, or 0 if none."""
+        best = 0.0
+        for other in self.organisms:
+            if other.uid == org.uid:
+                continue
+            if not other.is_mate_ready(self.config):
+                continue
+            d = float(np.linalg.norm(org.position - other.position))
+            if best == 0.0 or d < best:
+                best = d
+        return best
+
     def _nearest_food_within(self, position: np.ndarray, radius: float) -> int | None:
         available = np.where(self.food_cooldowns == 0)[0]
         if len(available) == 0:
@@ -743,10 +792,111 @@ class EvolutionSimulation:
         for p in candidates:
             if p.exists():
                 return str(p)
-        # Scan outputs directory
         outputs = Path("outputs")
         if outputs.exists():
             best_pts = sorted(outputs.glob("*/model_best.pt"), key=lambda x: x.stat().st_mtime, reverse=True)
             if best_pts:
                 return str(best_pts[0])
         return None
+
+    # ------------------------------------------------------------------
+    # Save / Load / Spawn
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _save_dir() -> Path:
+        d = Path("outputs/evolution/saved")
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @staticmethod
+    def _index_path() -> Path:
+        return Path("outputs/evolution/saved/index.json")
+
+    @staticmethod
+    def _load_index() -> list[dict[str, Any]]:
+        p = EvolutionSimulation._index_path()
+        if not p.exists():
+            return []
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+
+    @staticmethod
+    def _write_index(entries: list[dict[str, Any]]) -> None:
+        p = EvolutionSimulation._index_path()
+        p.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+
+    def save_organism(self, org: "OrganismState", note: str = "") -> str:
+        """Persist an organism's genome to disk. Returns the save key."""
+        save_dir = self._save_dir()
+        key = f"org_{org.uid}_gen{org.generation}_f{org.food_eaten}_a{org.age}"
+        pt_path = save_dir / f"{key}.pt"
+        torch.save({
+            "model_sd": {k: v.cpu() for k, v in org.model_sd.items()},
+            "physical": {f.name: getattr(org.physical, f.name) for f in __import__('dataclasses').fields(org.physical)},
+            "visual": {f.name: getattr(org.visual, f.name) for f in __import__('dataclasses').fields(org.visual)},
+        }, str(pt_path))
+        entry = {
+            "key": key,
+            "file": str(pt_path),
+            "uid": org.uid,
+            "lineage": org.lineage,
+            "generation": org.generation,
+            "food_eaten": org.food_eaten,
+            "age": org.age,
+            "note": note,
+            "saved_at": int(time.time()),
+            "physical": org.to_json()["physical"],
+            "visual": org.to_json()["visual"],
+        }
+        idx = self._load_index()
+        idx.append(entry)
+        # Keep at most 200 saved organisms
+        if len(idx) > 200:
+            to_delete = idx[:-200]
+            idx = idx[-200:]
+            for old in to_delete:
+                try:
+                    Path(old["file"]).unlink(missing_ok=True)
+                except Exception:
+                    pass
+        self._write_index(idx)
+        return key
+
+    def spawn_saved(self, key: str, position: np.ndarray | None = None) -> bool:
+        """Spawn a saved organism into the current simulation. Returns True on success."""
+        idx = self._load_index()
+        entry = next((e for e in idx if e["key"] == key), None)
+        if entry is None:
+            return False
+        pt_path = Path(entry["file"])
+        if not pt_path.exists():
+            return False
+        data = torch.load(str(pt_path), map_location="cpu")
+        physical = PhysicalTraits(**data["physical"])
+        visual = VisualTraits(**data["visual"])
+        model_sd = data["model_sd"]
+        # Slightly mutate to avoid clones
+        from .evo_genetics import mutate_weights, mutate_physical, mutate_visual
+        model_sd = mutate_weights(model_sd, 0.005, self.rng)
+        physical = mutate_physical(physical, self.rng, scale=0.3)
+        visual = mutate_visual(visual, self.rng)
+        uid = self._next_uid()
+        org = self._make_organism(
+            uid=uid,
+            lineage=entry.get("lineage", uid % 12),
+            generation=entry.get("generation", 0),
+            sd=model_sd,
+            physical=physical,
+            visual=visual,
+            position=position,
+        )
+        self.organisms.append(org)
+        self.total_born += 1
+        return True
+
+    @staticmethod
+    def list_saved() -> list[dict[str, Any]]:
+        return EvolutionSimulation._load_index()

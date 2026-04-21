@@ -27,6 +27,8 @@ const el = {
   traitSpeed:      document.getElementById("traitSpeed"),
   traitSight:      document.getElementById("traitSight"),
   traitSize:       document.getElementById("traitSize"),
+  savedList:       document.getElementById("savedList"),
+  savedCount:      document.getElementById("savedCount"),
 };
 
 async function api(path, options = {}) {
@@ -44,6 +46,47 @@ async function fetchState() {
   state = await api("/api/evolution/state");
   render();
   updatePanels();
+}
+
+async function loadSavedList() {
+  try {
+    const saved = await api("/api/evolution/saved");
+    renderSavedList(saved);
+  } catch (e) { /* ignore */ }
+}
+
+async function saveOrganism(uid) {
+  try {
+    await api("/api/evolution/save", { method: "POST", body: { uid, note: "" } });
+    await loadSavedList();
+  } catch (e) { console.error("Save failed:", e); }
+}
+
+async function spawnSaved(key) {
+  try {
+    state = await api("/api/evolution/spawn", { method: "POST", body: { key } });
+    render();
+    updatePanels();
+  } catch (e) { console.error("Spawn failed:", e); }
+}
+
+function renderSavedList(saved) {
+  if (!el.savedList) return;
+  if (el.savedCount) el.savedCount.textContent = `(${saved.length})`;
+  if (saved.length === 0) { el.savedList.innerHTML = '<div style="color:#555;font-size:11px;padding:4px">No saved organisms yet.<br>Organisms are auto-saved when they mate.</div>'; return; }
+  const sorted = [...saved].sort((a, b) => b.saved_at - a.saved_at);
+  el.savedList.innerHTML = sorted.slice(0, 50).map(s => {
+    const v = s.visual || {};
+    const p = s.physical || {};
+    const hsl = `hsl(${v.color_h||0}, ${Math.round((v.color_s||0.7)*100)}%, ${Math.round((v.color_l||0.55)*100)}%)`;
+    const shapeChar = (v.shape||"circle")[0].toUpperCase();
+    return `<div style="display:flex;align-items:center;gap:6px;padding:4px 2px;border-bottom:1px solid #1a221a;font-size:10px;">
+      <span style="display:inline-block;width:14px;height:14px;border-radius:${v.shape==='circle'?'50%':v.shape==='diamond'?'3px':'0'};background:${hsl};flex-shrink:0;font-size:8px;text-align:center;line-height:14px;color:rgba(0,0,0,0.5)">${shapeChar}</span>
+      <span style="flex:1;color:#aaa">g${s.generation} · f${s.food_eaten} · a${s.age}</span>
+      <span style="color:#666;font-size:9px">${s.note||''}</span>
+      <button onclick="spawnSaved('${s.key}')" style="padding:2px 7px;font-size:9px;background:#1e3a1e;border:1px solid #3a5a3a;border-radius:3px;color:#8a8;cursor:pointer">Spawn</button>
+    </div>`;
+  }).join("");
 }
 
 async function stepEvolution() {
@@ -96,23 +139,33 @@ function updatePopulationTable() {
   tbody.innerHTML = sorted.slice(0, 30).map(org => {
     const hsl = `hsl(${org.visual.color_h}, ${Math.round(org.visual.color_s * 100)}%, ${Math.round(org.visual.color_l * 100)}%)`;
     const isSelected = org.uid === selectedUid ? ' class="selected-row"' : "";
-    return `<tr${isSelected} data-uid="${org.uid}" style="cursor:pointer">
-      <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${hsl};margin-right:4px;"></span>g${org.generation}</td>
+    const mateGlow = org.mate_ready ? ' style="background:rgba(255,100,180,0.12)"' : "";
+    const mateIcon = org.mate_ready ? '💗' : '';
+    return `<tr${isSelected}${!isSelected ? mateGlow : ''} data-uid="${org.uid}" style="cursor:pointer">
+      <td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${hsl};margin-right:2px;"></span>g${org.generation}${mateIcon}</td>
       <td>${org.food_eaten}</td>
       <td>${org.age}</td>
       <td>${org.physical.move_speed.toFixed(3)}</td>
       <td>${org.physical.food_visible_range.toFixed(2)}</td>
       <td>${org.visual.body_size.toFixed(2)}</td>
       <td>${org.visual.shape[0]}</td>
+      <td><button data-save="${org.uid}" style="padding:1px 5px;font-size:9px;background:#1a2e1a;border:1px solid #2a4a2a;border-radius:3px;color:#7a7;cursor:pointer">💾</button></td>
     </tr>`;
   }).join("");
 
   tbody.querySelectorAll("tr").forEach(row => {
-    row.addEventListener("click", () => {
+    row.addEventListener("click", (e) => {
+      if (e.target.dataset.save) return; // let save button handle
       const uid = parseInt(row.dataset.uid, 10);
       selectedUid = selectedUid === uid ? null : uid;
       render();
       updatePanels();
+    });
+  });
+  tbody.querySelectorAll("[data-save]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      saveOrganism(parseInt(btn.dataset.save, 10));
     });
   });
 }
@@ -205,5 +258,11 @@ canvas.addEventListener("click", (e) => {
 
 window.addEventListener("resize", render);
 
+// Expose for inline onclick in rendered HTML
+window.spawnSaved = spawnSaved;
+
 // Init
 fetchState();
+loadSavedList();
+// Refresh saved list every 30 seconds (catches auto-saves from mating)
+setInterval(loadSavedList, 30000);
