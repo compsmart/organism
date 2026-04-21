@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .env import Action
+from .evolution import EvolutionSimulation
 from .session import SimulationSession, discover_checkpoints, load_config
 
 
@@ -106,15 +107,65 @@ class WebSessionManager:
             return self.session.state_dict()
 
 
+class EvoResetRequest(BaseModel):
+    seed: int | None = None
+    population_size: int | None = None
+
+
+class EvoStepRequest(BaseModel):
+    steps: int = 5
+
+
+class EvolutionSessionManager:
+    def __init__(self, outputs_root: Path) -> None:
+        self.outputs_root = outputs_root
+        self.lock = threading.Lock()
+        self.simulation = self._build_default()
+
+    def _build_default(self) -> EvolutionSimulation:
+        return EvolutionSimulation(seed=42)
+
+    def get_state(self) -> dict[str, Any]:
+        with self.lock:
+            return self.simulation.state_dict()
+
+    def step(self, steps: int) -> dict[str, Any]:
+        with self.lock:
+            self.simulation.step(steps)
+            return self.simulation.state_dict()
+
+    def reset(self, seed: int | None = None, population_size: int | None = None) -> dict[str, Any]:
+        with self.lock:
+            self.simulation.reset(seed=seed, population_size=population_size)
+            return self.simulation.state_dict()
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Organism Web Viewer")
     manager = WebSessionManager(OUTPUTS_ROOT)
+    evo_manager = EvolutionSessionManager(OUTPUTS_ROOT)
 
     app.mount("/static", StaticFiles(directory=WEBUI_ROOT), name="static")
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
         return FileResponse(WEBUI_ROOT / "index.html")
+
+    @app.get("/evolution", include_in_schema=False)
+    def evolution_page() -> FileResponse:
+        return FileResponse(WEBUI_ROOT / "evolution.html")
+
+    @app.get("/api/evolution/state")
+    def evo_state() -> dict[str, Any]:
+        return evo_manager.get_state()
+
+    @app.post("/api/evolution/reset")
+    def evo_reset(payload: EvoResetRequest) -> dict[str, Any]:
+        return evo_manager.reset(seed=payload.seed, population_size=payload.population_size)
+
+    @app.post("/api/evolution/step")
+    def evo_step(payload: EvoStepRequest) -> dict[str, Any]:
+        return evo_manager.step(max(1, min(payload.steps, 100)))
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

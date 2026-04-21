@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Organism — Evolution</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <style>
+    body { background: #1a1f1a; color: #d0d8c8; margin: 0; padding: 0; font-family: Aptos, system-ui, sans-serif; }
+    .evo-layout { display: flex; height: 100vh; overflow: hidden; }
+    .evo-canvas-wrap { flex: 1 1 auto; position: relative; overflow: hidden; }
+    #evoCanvas { display: block; width: 100%; height: 100%; }
+    .evo-sidebar { width: 300px; flex-shrink: 0; background: #151a15; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .evo-card { background: #1e261e; border: 1px solid #2e3a2e; border-radius: 8px; padding: 10px 12px; }
+    .evo-card h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #7a9a7a; }
+    .evo-control-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .evo-control-row label { font-size: 11px; color: #888; min-width: 52px; }
+    .evo-control-row input[type=range] { flex: 1; }
+    .evo-control-row input[type=number] { width: 60px; background: #111; border: 1px solid #333; color: #ccc; border-radius: 4px; padding: 2px 4px; font-size: 11px; }
+    .evo-btn { padding: 5px 12px; background: #2e4a2e; border: 1px solid #4a6a4a; border-radius: 5px; color: #a8d8a8; cursor: pointer; font-size: 12px; }
+    .evo-btn:hover { background: #3a5e3a; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 11px; }
+    .stat-item { display: flex; flex-direction: column; }
+    .stat-label { color: #777; font-size: 10px; }
+    .stat-value { font-size: 14px; font-weight: 700; color: #a8d8a8; }
+    .pop-table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    th { color: #7a9a7a; font-size: 9px; text-transform: uppercase; padding: 3px 4px; border-bottom: 1px solid #2e3a2e; text-align: left; }
+    td { padding: 3px 4px; border-bottom: 1px solid #1a221a; }
+    tr:hover { background: #252e25; }
+    tr.selected-row { background: #2a3e2a !important; }
+    .selected-info { font-size: 11px; color: #b0c8b0; line-height: 1.5; min-height: 40px; }
+    .selected-info hr { border-color: #2e3a2e; }
+    .trait-bar-wrap { margin-bottom: 8px; }
+    .nav-link { font-size: 11px; color: #7a9a7a; text-decoration: none; }
+    .nav-link:hover { color: #a8d8a8; }
+  </style>
+</head>
+<body>
+  <div class="evo-layout">
+    <!-- Canvas -->
+    <div class="evo-canvas-wrap">
+      <canvas id="evoCanvas"></canvas>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="evo-sidebar">
+      <!-- Nav -->
+      <div style="padding: 4px 0 2px; font-size: 12px;">
+        <a class="nav-link" href="/">← Single Organism</a>
+        &nbsp;|&nbsp;
+        <span style="color:#a8d8a8; font-size:12px;">Evolution</span>
+      </div>
+
+      <!-- Controls -->
+      <div class="evo-card">
+        <h3>Controls</h3>
+        <div class="evo-control-row">
+          <button id="evoStartBtn" class="evo-btn" style="width:100%">▶ Start</button>
+        </div>
+        <div class="evo-control-row">
+          <label>Speed</label>
+          <input id="evoSpeed" type="range" min="1" max="50" value="5" />
+          <span id="evoSpeedLabel" style="font-size:11px;min-width:20px;text-align:right">5</span>
+        </div>
+        <div class="evo-control-row">
+          <label>Seed</label>
+          <input id="evoSeed" type="number" value="42" min="0" />
+          <label style="margin-left:6px">Pop</label>
+          <input id="evoPopSize" type="number" value="12" min="4" max="40" />
+        </div>
+        <div class="evo-control-row">
+          <button id="evoResetBtn" class="evo-btn" style="width:100%">↺ Reset</button>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="evo-card">
+        <h3>Statistics</h3>
+        <div class="stats-grid">
+          <div class="stat-item"><span class="stat-label">Tick</span><span id="evoTick" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">Alive</span><span id="evoAlive" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">Eggs</span><span id="evoEggs" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">Generation</span><span id="evoGenMax" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">Matings</span><span id="evoMatings" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">Born</span><span id="evoBorn" class="stat-value">0</span></div>
+          <div class="stat-item"><span class="stat-label">Died</span><span id="evoDied" class="stat-value">0</span></div>
+        </div>
+      </div>
+
+      <!-- Trait Evolution -->
+      <div class="evo-card">
+        <h3>Trait Evolution</h3>
+        <div class="trait-bar-wrap" id="traitSpeed"></div>
+        <div class="trait-bar-wrap" id="traitSight"></div>
+        <div class="trait-bar-wrap" id="traitSize"></div>
+      </div>
+
+      <!-- Selected organism -->
+      <div class="evo-card">
+        <h3>Selected Organism</h3>
+        <div id="evoSelectedInfo" class="selected-info">Click an organism to inspect</div>
+      </div>
+
+      <!-- Population table -->
+      <div class="evo-card">
+        <h3>Population</h3>
+        <div class="pop-table-wrap">
+          <table id="evoPopTable">
+            <thead>
+              <tr>
+                <th>Gen</th><th>Food</th><th>Age</th><th>Spd</th><th>Sight</th><th>Size</th><th>Shp</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/static/evo_app.js"></script>
+</body>
+</html>
