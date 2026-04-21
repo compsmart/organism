@@ -10,7 +10,7 @@ class EnvironmentConfig:
     world_size: float = 1.0
     max_steps: int = 256
     num_food_sources: int = 5
-    num_hazards: int = 3
+    num_hazards: int = 5
     sensor_range: float = 0.55
     eat_radius: float = 0.12
     shelter_radius: float = 0.12
