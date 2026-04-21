@@ -35,6 +35,7 @@ class EnvironmentConfig:
     edge_penalty: float = 0.0
     edge_threshold: float = 0.1
     food_approach_scale: float = 0.0
+    variety: bool = False
 
 
 @dataclass
@@ -55,6 +56,7 @@ class AgentConfig:
     use_metacognition: bool = True
     use_planning: bool = True
     use_narration: bool = True
+    use_reflex: bool = True
 
 
 @dataclass

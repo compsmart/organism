@@ -148,9 +148,13 @@ class SimulationSession:
         env = self.env
         observation = self.observation
         available_food = [
-            _point_to_list(point)
-            for point, cooldown in zip(env.food_positions, env.food_cooldowns)
+            {"pos": _point_to_list(point), "value": float(value)}
+            for point, cooldown, value in zip(env.food_positions, env.food_cooldowns, env.food_values)
             if cooldown == 0 and np.all(point >= 0.0)
+        ]
+        hazards = [
+            {"pos": _point_to_list(point), "value": float(value)}
+            for point, value in zip(env.hazard_positions, env.hazard_values)
         ]
 
         return {

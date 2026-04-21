@@ -1,12 +1,12 @@
 #!/bin/bash
 cd /root/organism
-rm -rf outputs/organism-v16
+rm -rf outputs/organism-v17
 export PYTHONUNBUFFERED=1
 python3 -u -m organism \
-  --episodes 600 \
-  --run-name organism-v16 \
+  --episodes 700 \
+  --run-name organism-v17 \
   --seed 42 \
-  --edge-curriculum \
+  --variety \
   --edge-penalty 0.01 \
   --food-approach 0.05 \
   --learning-rate 0.0015 \

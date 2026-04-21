@@ -82,35 +82,55 @@ function drawShelter(ctx, world, scene) {
   ctx.fillText("S", point.x, point.y + 5);
 }
 
+function entityPos(entity) {
+  return Array.isArray(entity) ? entity : entity.pos;
+}
+
+function entityValue(entity) {
+  return Array.isArray(entity) ? 1.0 : (entity.value ?? 1.0);
+}
+
 function drawFood(ctx, world, scene) {
   world.food.forEach((food) => {
-    const point = worldToCanvas(food, scene);
-    const radius = Math.max(5, world.eat_radius * scene.size * 0.8);
-    ctx.fillStyle = "#67a35c";
+    const point = worldToCanvas(entityPos(food), scene);
+    const value = entityValue(food);
+    const baseRadius = Math.max(5, world.eat_radius * scene.size * 0.8);
+    const radius = baseRadius * Math.sqrt(value);
+    const saturation = Math.min(1, 0.5 + value * 0.25);
+    ctx.fillStyle = value >= 2.0 ? "#3c9048" : value >= 1.4 ? "#56a756" : value >= 0.8 ? "#82b96c" : "#b8cc8c";
     ctx.strokeStyle = "#2e6b2e";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+    if (value >= 2.0) {
+      ctx.fillStyle = "#ffe88a";
+      ctx.font = `700 ${Math.max(9, radius * 0.9)}px Georgia`;
+      ctx.textAlign = "center";
+      ctx.fillText("★", point.x, point.y + radius * 0.35);
+    }
   });
 }
 
 function drawHazards(ctx, world, scene) {
   world.hazards.forEach((hazard) => {
-    const point = worldToCanvas(hazard, scene);
-    const radius = world.hazard_radius * scene.size;
-    ctx.fillStyle = "rgba(204, 110, 88, 0.48)";
-    ctx.strokeStyle = "#913a2e";
-    ctx.lineWidth = 2;
+    const point = worldToCanvas(entityPos(hazard), scene);
+    const value = entityValue(hazard);
+    const radius = world.hazard_radius * scene.size * Math.sqrt(value);
+    const alpha = Math.min(0.85, 0.3 + value * 0.25);
+    ctx.fillStyle = `rgba(204, 110, 88, ${alpha})`;
+    ctx.strokeStyle = value >= 2.0 ? "#5b0e05" : value >= 1.4 ? "#7a1b10" : "#913a2e";
+    ctx.lineWidth = 2 + (value >= 1.4 ? 1 : 0);
     ctx.beginPath();
     ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = "#7d241c";
-    ctx.font = "700 14px Georgia";
+    ctx.font = `700 ${Math.max(11, 10 + value * 3)}px Georgia`;
     ctx.textAlign = "center";
-    ctx.fillText("!", point.x, point.y + 5);
+    const mark = value >= 2.0 ? "☠" : value >= 1.4 ? "‼" : "!";
+    ctx.fillText(mark, point.x, point.y + 5);
   });
 }
 

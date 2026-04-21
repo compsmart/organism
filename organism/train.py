@@ -93,6 +93,22 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Base learning rate before μP scaling (default: 3e-3).",
     )
+    parser.add_argument(
+        "--no-reflex",
+        action="store_true",
+        help="Disable hard-coded reflex overrides (let policy learn on its own).",
+    )
+    parser.add_argument(
+        "--entropy-coef",
+        type=float,
+        default=None,
+        help="Entropy bonus coefficient (default: 0.02).",
+    )
+    parser.add_argument(
+        "--variety",
+        action="store_true",
+        help="Randomize food/hazard value multipliers (0.5x-2.3x).",
+    )
     return parser.parse_args()
 
 
@@ -203,6 +219,12 @@ def build_experiment(args: argparse.Namespace) -> ExperimentConfig:
         config.env.food_approach_scale = args.food_approach
     if args.learning_rate is not None:
         config.agent.learning_rate = args.learning_rate
+    if args.no_reflex:
+        config.agent.use_reflex = False
+    if args.entropy_coef is not None:
+        config.agent.entropy_coef = args.entropy_coef
+    if args.variety:
+        config.env.variety = True
     return config
 
 

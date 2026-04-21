@@ -90,7 +90,9 @@ class OrganismEnv:
         self.sector_offsets = np.array([-0.9, 0.0, 0.9], dtype=np.float32)
         self.food_positions = np.zeros((self.config.num_food_sources, 2), dtype=np.float32)
         self.food_cooldowns = np.zeros(self.config.num_food_sources, dtype=np.int32)
+        self.food_values = np.ones(self.config.num_food_sources, dtype=np.float32)
         self.hazard_positions = np.zeros((self.config.num_hazards, 2), dtype=np.float32)
+        self.hazard_values = np.ones(self.config.num_hazards, dtype=np.float32)
         self.shelter_position = np.zeros(2, dtype=np.float32)
         self.agent_position = np.zeros(2, dtype=np.float32)
         self.heading = 0.0
@@ -138,6 +140,11 @@ class OrganismEnv:
                     avoid=np.vstack([self.food_positions, self.shelter_position[None, :]]),
                 )
 
+        for index in range(self.config.num_food_sources):
+            self.food_values[index] = self._sample_food_value()
+        for index in range(self.config.num_hazards):
+            self.hazard_values[index] = self._sample_hazard_value()
+
         self.previous_discomfort = self._discomfort()
         self._mark_visited()
         self.prev_nearest_food_distance = self._nearest_food_distance()
@@ -174,7 +181,8 @@ class OrganismEnv:
             edible_index = self._nearest_food_within(self.config.eat_radius)
             self.energy -= 0.002
             if edible_index is not None and self.food_cooldowns[edible_index] == 0:
-                self.energy += self.config.food_energy_gain
+                ate_food_value = float(self.food_values[edible_index])
+                self.energy += self.config.food_energy_gain * ate_food_value
                 self.food_cooldowns[edible_index] = self.config.food_respawn_steps
                 self.food_positions[edible_index] = np.array([-1.0, -1.0], dtype=np.float32)
                 ate_food = True
@@ -203,7 +211,7 @@ class OrganismEnv:
         discomfort = self._discomfort()
         reward = (previous_discomfort - discomfort) + novelty_bonus
         if ate_food:
-            reward += 0.2
+            reward += 0.2 * ate_food_value
         if collision:
             reward -= 0.05
         if hazard_contacts:
@@ -283,11 +291,17 @@ class OrganismEnv:
         return "\n".join("".join(row) for row in grid[::-1])
 
     def _observe(self) -> np.ndarray:
-        available_food = self.food_positions[self.food_cooldowns == 0]
+        available_mask = self.food_cooldowns == 0
+        available_food = self.food_positions[available_mask]
+        available_food_values = self.food_values[available_mask]
         food_sensors = self._sector_response(
-            available_food, detection_range=self.config.food_visible_range
+            available_food,
+            detection_range=self.config.food_visible_range,
+            weights=available_food_values,
         )
-        hazard_sensors = self._sector_response(self.hazard_positions)
+        hazard_sensors = self._sector_response(
+            self.hazard_positions, weights=self.hazard_values
+        )
         wall_sensors = np.array(
             [self._wall_sensor(self.heading + offset) for offset in self.sector_offsets],
             dtype=np.float32,
@@ -335,17 +349,36 @@ class OrganismEnv:
                 continue
             self.food_cooldowns[index] -= 1
             if self.food_cooldowns[index] == 0:
-                self.food_positions[index] = self._spawn_point(min_distance=0.15)
+                if self.config.edge_hazard_curriculum:
+                    self.food_positions[index] = self._spawn_inner(min_distance=0.15)
+                else:
+                    self.food_positions[index] = self._spawn_point(min_distance=0.15)
+                self.food_values[index] = self._sample_food_value()
+
+    def _sample_food_value(self) -> float:
+        if not self.config.variety:
+            return 1.0
+        tiers = [0.5, 1.0, 1.6, 2.3]
+        weights = [0.3, 0.4, 0.2, 0.1]
+        return float(self.rng.choice(tiers, p=weights))
+
+    def _sample_hazard_value(self) -> float:
+        if not self.config.variety:
+            return 1.0
+        tiers = [0.5, 1.0, 1.6, 2.3]
+        weights = [0.3, 0.4, 0.2, 0.1]
+        return float(self.rng.choice(tiers, p=weights))
 
     def _apply_hazard_damage(self) -> int:
         contacts = 0
-        for hazard in self.hazard_positions:
+        for i, hazard in enumerate(self.hazard_positions):
             distance = float(np.linalg.norm(self.agent_position - hazard))
             if distance <= self.config.hazard_radius:
                 contacts += 1
                 severity = 1.0 - (distance / self.config.hazard_radius)
-                self.damage += self.config.hazard_damage * (0.45 + 0.55 * severity)
-                self.energy -= 0.01 * severity
+                strength = float(self.hazard_values[i])
+                self.damage += self.config.hazard_damage * (0.45 + 0.55 * severity) * strength
+                self.energy -= 0.01 * severity * strength
         return contacts
 
     def _mark_visited(self) -> float:
@@ -391,24 +424,28 @@ class OrganismEnv:
         return None
 
     def _sector_response(
-        self, targets: np.ndarray, detection_range: float | None = None
+        self,
+        targets: np.ndarray,
+        detection_range: float | None = None,
+        weights: np.ndarray | None = None,
     ) -> np.ndarray:
         effective_range = detection_range if detection_range is not None else self.config.sensor_range
         response = np.zeros(3, dtype=np.float32)
         if len(targets) == 0:
             return response
 
-        for target in targets:
+        for i, target in enumerate(targets):
             vector = target - self.agent_position
             distance = float(np.linalg.norm(vector))
             if distance <= 1e-6 or distance > effective_range:
                 continue
 
+            w = float(weights[i]) if weights is not None else 1.0
             relative_angle = self._wrap_angle(self._angle_to(vector) - self.heading)
             distance_weight = 1.0 - distance / effective_range
             for index, sector_center in enumerate(self.sector_offsets):
                 angular_weight = max(0.0, np.cos(relative_angle - sector_center))
-                response[index] += distance_weight * angular_weight
+                response[index] += w * distance_weight * angular_weight
 
         return np.clip(response, 0.0, 1.0)
 
