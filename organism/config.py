@@ -38,7 +38,7 @@ class EnvironmentConfig:
     variety: bool = False
     food_quantity_min: float = 2.0
     food_quantity_max: float = 6.0
-    eat_rate: float = 0.5
+    eat_rate: float = 0.1
     hazard_radius_min: float = 0.04
     hazard_radius_max: float = 0.09
     hazard_speed: float = 0.003
