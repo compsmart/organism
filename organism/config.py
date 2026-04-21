@@ -16,7 +16,7 @@ class EnvironmentConfig:
     shelter_radius: float = 0.12
     move_speed: float = 0.06
     turn_angle: float = 0.4
-    energy_decay: float = 0.003
+    energy_decay: float = 0.005
     movement_energy_cost: float = 0.008
     turn_energy_cost: float = 0.004
     food_energy_gain: float = 0.5

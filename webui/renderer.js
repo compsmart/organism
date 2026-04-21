@@ -82,21 +82,13 @@ function drawShelter(ctx, world, scene) {
   ctx.fillText("S", point.x, point.y + 5);
 }
 
-function entityPos(entity) {
-  return Array.isArray(entity) ? entity : entity.pos;
-}
-
-function entityValue(entity) {
-  return Array.isArray(entity) ? 1.0 : (entity.value ?? 1.0);
-}
-
 function drawFood(ctx, world, scene) {
-  world.food.forEach((food) => {
-    const point = worldToCanvas(entityPos(food), scene);
-    const value = entityValue(food);
+  const values = world.food_values || [];
+  world.food.forEach((food, i) => {
+    const point = worldToCanvas(food, scene);
+    const value = values[i] ?? 1.0;
     const baseRadius = Math.max(5, world.eat_radius * scene.size * 0.8);
     const radius = baseRadius * Math.sqrt(value);
-    const saturation = Math.min(1, 0.5 + value * 0.25);
     ctx.fillStyle = value >= 2.0 ? "#3c9048" : value >= 1.4 ? "#56a756" : value >= 0.8 ? "#82b96c" : "#b8cc8c";
     ctx.strokeStyle = "#2e6b2e";
     ctx.lineWidth = 2;
@@ -114,9 +106,10 @@ function drawFood(ctx, world, scene) {
 }
 
 function drawHazards(ctx, world, scene) {
-  world.hazards.forEach((hazard) => {
-    const point = worldToCanvas(entityPos(hazard), scene);
-    const value = entityValue(hazard);
+  const values = world.hazard_values || [];
+  world.hazards.forEach((hazard, i) => {
+    const point = worldToCanvas(hazard, scene);
+    const value = values[i] ?? 1.0;
     const radius = world.hazard_radius * scene.size * Math.sqrt(value);
     const alpha = Math.min(0.85, 0.3 + value * 0.25);
     ctx.fillStyle = `rgba(204, 110, 88, ${alpha})`;

@@ -98,6 +98,7 @@ class SimulationSession:
         self.food_eaten = 0
         self.last_ate_food = False
         self.position_history = [self.env.agent_position.copy()]
+        self._recent_actions: list[int] = []
 
     def randomize_seed(self) -> int:
         seed = random.randint(0, 1_000_000)
@@ -114,12 +115,25 @@ class SimulationSession:
             self.reset(seed=self.seed)
         prev_hidden = self.hidden
         prev_obs = self.observation
+        # In deterministic mode, detect loops (same action 6+ times, or L/R
+        # alternation) and break them by sampling instead of taking argmax.
+        use_det = self.deterministic
+        if use_det and len(self._recent_actions) >= 6:
+            last6 = self._recent_actions[-6:]
+            if len(set(last6)) == 1:
+                use_det = False
+            elif all(a in (1, 2) for a in last6) and last6[0] != last6[1]:
+                use_det = False
+
         policy_step = self.learner.select_action(
             self.observation,
             self.hidden,
-            deterministic=self.deterministic,
+            deterministic=use_det,
             track_grad=False,
         )
+        self._recent_actions.append(policy_step.action)
+        if len(self._recent_actions) > 12:
+            self._recent_actions = self._recent_actions[-12:]
         self.hidden = policy_step.hidden.detach()
         self.last_surprise = self.learner.compute_surprise(
             prev_hidden, policy_step.action, self.hidden
@@ -147,15 +161,14 @@ class SimulationSession:
 
         env = self.env
         observation = self.observation
-        available_food = [
-            {"pos": _point_to_list(point), "value": float(value)}
+        available_food_items = [
+            (point, float(value))
             for point, cooldown, value in zip(env.food_positions, env.food_cooldowns, env.food_values)
             if cooldown == 0 and np.all(point >= 0.0)
         ]
-        hazards = [
-            {"pos": _point_to_list(point), "value": float(value)}
-            for point, value in zip(env.hazard_positions, env.hazard_values)
-        ]
+        available_food = [_point_to_list(p) for p, _ in available_food_items]
+        available_food_values = [v for _, v in available_food_items]
+        hazard_values = [float(v) for v in env.hazard_values]
 
         return {
             "seed": self.seed,
@@ -190,7 +203,9 @@ class SimulationSession:
                 "heading": float(env.heading),
                 "shelter": _point_to_list(env.shelter_position),
                 "food": available_food,
+                "food_values": available_food_values,
                 "hazards": [_point_to_list(point) for point in env.hazard_positions],
+                "hazard_values": hazard_values,
                 "trail": [_point_to_list(point) for point in self.position_history[-160:]],
                 "visitation": env.visitation.astype(int).tolist(),
                 "sector_offsets": [float(offset) for offset in env.sector_offsets],
