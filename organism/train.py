@@ -70,6 +70,29 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="GRU hidden size (default: 512). LR auto-scales via μP.",
     )
+    parser.add_argument(
+        "--edge-curriculum",
+        action="store_true",
+        help="Place hazards at perimeter and food inside (forces inner exploration).",
+    )
+    parser.add_argument(
+        "--edge-penalty",
+        type=float,
+        default=None,
+        help="Per-step penalty when near a wall (default: 0.0).",
+    )
+    parser.add_argument(
+        "--food-approach",
+        type=float,
+        default=None,
+        help="Reward scale for getting closer to nearest food (default: 0.0).",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=None,
+        help="Base learning rate before μP scaling (default: 3e-3).",
+    )
     return parser.parse_args()
 
 
@@ -172,6 +195,14 @@ def build_experiment(args: argparse.Namespace) -> ExperimentConfig:
         config.agent.use_global_workspace = False
     if args.hidden_size is not None:
         config.agent.hidden_size = args.hidden_size
+    if args.edge_curriculum:
+        config.env.edge_hazard_curriculum = True
+    if args.edge_penalty is not None:
+        config.env.edge_penalty = args.edge_penalty
+    if args.food_approach is not None:
+        config.env.food_approach_scale = args.food_approach
+    if args.learning_rate is not None:
+        config.agent.learning_rate = args.learning_rate
     return config
 
 

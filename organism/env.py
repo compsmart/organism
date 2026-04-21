@@ -122,17 +122,25 @@ class OrganismEnv:
         self.damage = self.config.start_damage
         self.fatigue = self.config.start_fatigue
 
-        for index in range(self.config.num_food_sources):
-            self.food_positions[index] = self._spawn_point(min_distance=0.15)
-
-        for index in range(self.config.num_hazards):
-            self.hazard_positions[index] = self._spawn_point(
-                min_distance=0.18,
-                avoid=np.vstack([self.food_positions, self.shelter_position[None, :]]),
-            )
+        if self.config.edge_hazard_curriculum:
+            for index in range(self.config.num_food_sources):
+                self.food_positions[index] = self._spawn_inner(min_distance=0.15)
+            for index in range(self.config.num_hazards):
+                self.hazard_positions[index] = self._spawn_perimeter(
+                    avoid=np.vstack([self.food_positions, self.shelter_position[None, :]]),
+                )
+        else:
+            for index in range(self.config.num_food_sources):
+                self.food_positions[index] = self._spawn_point(min_distance=0.15)
+            for index in range(self.config.num_hazards):
+                self.hazard_positions[index] = self._spawn_point(
+                    min_distance=0.18,
+                    avoid=np.vstack([self.food_positions, self.shelter_position[None, :]]),
+                )
 
         self.previous_discomfort = self._discomfort()
         self._mark_visited()
+        self.prev_nearest_food_distance = self._nearest_food_distance()
         return self._observe()
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, dict[str, Any]]:
@@ -202,6 +210,19 @@ class OrganismEnv:
             reward -= 0.03 * hazard_contacts
         if chosen_action == Action.REST and self.fatigue < 0.15 and self.damage < 0.1:
             reward -= 0.01
+
+        if self.config.edge_penalty > 0.0:
+            pos = self.agent_position
+            wall_dist = min(pos[0], pos[1], self.config.world_size - pos[0], self.config.world_size - pos[1])
+            if wall_dist < self.config.edge_threshold:
+                reward -= self.config.edge_penalty
+
+        if self.config.food_approach_scale > 0.0:
+            curr_food_dist = self._nearest_food_distance()
+            if self.prev_nearest_food_distance > 0.0 and curr_food_dist > 0.0:
+                delta = self.prev_nearest_food_distance - curr_food_dist
+                reward += self.config.food_approach_scale * float(delta)
+            self.prev_nearest_food_distance = curr_food_dist
 
         done = False
         death_reason: str | None = None
@@ -435,6 +456,42 @@ class OrganismEnv:
         angle = self.rng.uniform(-np.pi, np.pi)
         offset = radius * np.array([np.cos(angle), np.sin(angle)], dtype=np.float32)
         return np.clip(origin + offset, 0.05, self.config.world_size - 0.05)
+
+    def _spawn_inner(self, min_distance: float = 0.15, max_attempts: int = 256) -> np.ndarray:
+        """Spawn a point in the inner region (away from walls) — used for food in curriculum."""
+        lo, hi = 0.25, self.config.world_size - 0.25
+        for _ in range(max_attempts):
+            point = self.rng.uniform(lo, hi, size=2).astype(np.float32)
+            if np.linalg.norm(point - self.shelter_position) < min_distance:
+                continue
+            return point
+        return self.rng.uniform(lo, hi, size=2).astype(np.float32)
+
+    def _spawn_perimeter(self, avoid: np.ndarray | None = None, max_attempts: int = 256) -> np.ndarray:
+        """Spawn a point within 0.12 of a wall — used for hazards in curriculum."""
+        for _ in range(max_attempts):
+            side = int(self.rng.integers(0, 4))
+            along = float(self.rng.uniform(0.08, self.config.world_size - 0.08))
+            band = float(self.rng.uniform(0.03, 0.12))
+            if side == 0:
+                point = np.array([along, band], dtype=np.float32)
+            elif side == 1:
+                point = np.array([along, self.config.world_size - band], dtype=np.float32)
+            elif side == 2:
+                point = np.array([band, along], dtype=np.float32)
+            else:
+                point = np.array([self.config.world_size - band, along], dtype=np.float32)
+            if avoid is not None and len(avoid):
+                if np.any(np.linalg.norm(avoid - point, axis=1) < 0.12):
+                    continue
+            return point
+        return np.array([0.05, 0.05], dtype=np.float32)
+
+    def _nearest_food_distance(self) -> float:
+        available = self.food_positions[self.food_cooldowns == 0]
+        if len(available) == 0:
+            return 0.0
+        return float(np.min(np.linalg.norm(available - self.agent_position, axis=1)))
 
     def _discomfort(self) -> float:
         return float(

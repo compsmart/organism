@@ -25,12 +25,16 @@ class EnvironmentConfig:
     rest_recovery: float = 0.08
     passive_healing: float = 0.012
     novelty_grid_size: int = 8
-    novelty_reward_scale: float = 0.02
+    novelty_reward_scale: float = 0.0
     food_respawn_steps: int = 10
     start_energy: float = 0.72
     start_damage: float = 0.0
     start_fatigue: float = 0.12
     food_visible_range: float = 0.7
+    edge_hazard_curriculum: bool = False
+    edge_penalty: float = 0.0
+    edge_threshold: float = 0.1
+    food_approach_scale: float = 0.0
 
 
 @dataclass
